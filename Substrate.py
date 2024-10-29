@@ -19,10 +19,9 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
 import sqlite3
-
 from dataclasses import dataclass
 from datetime import datetime
-
+from typing import Optional
 
 @dataclass
 class TeamEntry:
@@ -49,9 +48,14 @@ def init():
     """Initialize Substrate layer."""
     global _db, _cur
 
-    # By default, open a database with today's date, since we assume that
-    # multiple events won't be run on the same computer on the same day...
-    _db = sqlite3.connect(f"{datetime.now().strftime('%Y%m%d')}-event.db")
+    # Check if a precreated database has been populated.
+    dbFilename = _findPrecreatedDb()
+    if dbFilename is None:
+        # If no precreated database is available, open a database with today's date,
+        # since we assume that multiple events won't be run on the same computer on the same day...
+        dbFilename = f"{datetime.now().strftime('%Y%m%d')}-event.db"
+
+    _db = sqlite3.connect(dbFilename)
     _cur = _db.cursor()
 
     # Check if database is empty (i.e., has no tables)
@@ -111,13 +115,33 @@ def saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
     writeAuditEntry("score_update", auditEntry)
 
 
+def saveScoresheet(teamnumber: int, round: int, scoresheet: str):
+    """Create or update a match scoresheet, writing an audit log entry to note the change."""
+    slug = f"{teamnumber}-{round}"
+    # Check if previous score exists
+    _cur.execute("SELECT scoresheet FROM scoresheets WHERE teamnumber = ? AND round = ?", (teamnumber, round))
+    maybe_old_scoresheet = _cur.fetchall()
+    old_scoresheet = None if len(maybe_old_scoresheet) == 0 else maybe_old_scoresheet[0][0]
+
+    # Allow updating existing scoresheets by using INSERT OR REPLACE INTO
+    _cur.execute("INSERT OR REPLACE INTO scoresheets VALUES (?, ?, ?, ?)",
+                 (slug, teamnumber, round, scoresheet))
+
+    auditEntry = {
+        "teamnumber": teamnumber,
+        "round": round,
+        "old_score": old_scoresheet,
+        "new_score": scoresheet
+    }
+    writeAuditEntry("scoresheet_update", auditEntry)
+
 def deleteTeam(teamnumber: int):
     """Delete a team, including its associated scores."""
     # Delete the team
     writeAuditEntry("team_delete", {"teamnumber": teamnumber})
     _cur.execute("DELETE FROM teams WHERE teamnumber = ?", (teamnumber,))
 
-    # Find all associated scores, audit log the deletion, then perform the deletion
+    # Find all associated scores, scoresheets, audit log the deletion, then perform the deletion
     _cur.execute("SELECT slug, round, score FROM scores WHERE teamnumber = ?", (teamnumber,))
     maybe_delete_scores = _cur.fetchall()
     for score_entry in maybe_delete_scores:
@@ -129,6 +153,18 @@ def deleteTeam(teamnumber: int):
         }
         writeAuditEntry("score_delete", audit_entry)
         _cur.execute("DELETE FROM scores WHERE slug = ?", (score_entry[0],))
+
+    _cur.execute("SELECT slug, round, scoresheet FROM scoresheets WHERE teamnumber = ?", (teamnumber,))
+    maybe_delete_scoresheets = _cur.fetchall()
+    for entry in maybe_delete_scoresheets:
+        audit_entry = {
+            "teamnumber": teamnumber,
+            "round": entry[1],
+            "old_scoresheet": entry[2],
+            "new_scoresheet": None
+        }
+        writeAuditEntry("score_delete", audit_entry)
+        _cur.execute("DELETE FROM scoresheets WHERE slug = ?", (entry[0],))
 
     _db.commit()
 
@@ -153,14 +189,47 @@ def writeLogEntry(tag: str, message: str):
     _db.commit()
 
 
+def _findPrecreatedDb() -> Optional[str]:
+    """Find the precreated event database closest to today's date that is not in the past."""
+    import os
+    import re
+
+    # Precreated databases follow the pattern of EVENTCODE-YYYYMMDD.db
+    pattern = re.compile(r"^([a-zA-Z]+)-(\d{8})\.db")
+
+    today = datetime.today().date()
+    closestFile = None
+    closestDate = None
+
+    for filename in os.listdir(os.getcwd()):
+        match = pattern.match(filename)
+        if match:
+            # Extract the date string (second group)
+            date_str = match.group(2)
+            try:
+                fileDate = datetime.strptime(date_str, '%Y%m%d').date()
+                # Check if the file's date is not in the past
+                if fileDate >= today:
+                    # Find the closest date without being in the past
+                    if closestDate is None or fileDate < closestDate:
+                        closestDate = fileDate
+                        closestFile = filename
+            except ValueError:
+                # Skip files with invalid date formats
+                continue
+
+    return closestFile
+
+
 def _createTables():
     """Internal method to create tables for a freshly-initialized database."""
     _cur.executescript("""
                        PRAGMA application_id = 0;
-                       PRAGMA user_version = 0;
+                       PRAGMA user_version = 1;
                        CREATE TABLE teams(teamnumber type UNIQUE, name);
                        CREATE TABLE scores(slug type UNIQUE, teamnumber, round, score, comments);
                        CREATE TABLE audit(timestamp, tag, data);
                        CREATE TABLE log(timestamp, tag, message);
+                       CREATE TABLE scoresheets(slug type UNIQUE, teamnumber, round, scoresheet);
                        """)
     _db.commit()

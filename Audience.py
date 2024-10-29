@@ -21,7 +21,7 @@ import os
 
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import *
 
 from CustomWidgets import CustomScroll

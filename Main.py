@@ -30,6 +30,7 @@ import Substrate
 from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
+from Scoresheet_submerged import ScoresheetDialog
 from Team import Team
 
 sheet = """
@@ -126,8 +127,10 @@ class MainWindow(QMainWindow):
             self.manually.triggered.connect(self.openAddTeamWindow)
             self.addTeamsMenu.addActions([self.fromCsv, self.fromCsvScores, self.manually])
 
-            self.insert = QAction("Insert Scores")
+            self.insert = QAction("Add Score Manually")
             self.insert.triggered.connect(self.openInsertPane)
+            self.scoresheet = QAction("Add Scoresheet")
+            self.scoresheet.triggered.connect(self.openScoresheetPane)
             self.export = QAction("Export Scores")
             self.export.triggered.connect(self.exportCsv)
 
@@ -149,7 +152,7 @@ class MainWindow(QMainWindow):
             # Add menus to bar
             self.audienceMenu.addActions(
                 [self.timerMode, self.timerStart, self.timerReset, self.rankingsTop, self.testAudio])
-            self.menuBar().addActions([self.insert, self.export])
+            self.menuBar().addActions([self.insert, self.scoresheet, self.export])
             self.menuBar().addMenu(self.audienceMenu)
 
             # Create config area
@@ -235,7 +238,7 @@ class MainWindow(QMainWindow):
             filename = dialog.getOpenFileName(self)[0]
 
             if ".csv" in filename:
-                with open(filename, 'r') as n:
+                with open(filename, "r") as n:
                     data = csv.DictReader(n)
                     for row in data:
                         team = Team(row["Team Name"], row["Team Number"])
@@ -309,10 +312,22 @@ class MainWindow(QMainWindow):
             print(err)
 
     def openInsertPane(self):
+        # Do nothing if no teams loaded yet
+        if len(self.teams) == 0:
+            QMessageBox.critical(self, "Error", "No teams loaded!")
+
         try:
             self.insertWindow = Insert(self)
         except Exception as err:
             print(err)
+
+    def openScoresheetPane(self):
+        # Do nothing if no teams loaded yet
+        if len(self.teams) == 0:
+            QMessageBox.critical(self, "Error", "No teams loaded!")
+        else:
+            self.insertWindow = ScoresheetDialog(self)
+            self.insertWindow.exec()
 
     def fetchTeam(self, number):
         try:

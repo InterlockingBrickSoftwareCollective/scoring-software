@@ -1,0 +1,177 @@
+<game name="submerged" year="2024">
+  <mission name="Equipment inspection">
+    <task eh_task_name="m00_scoring_1" description="(Prematch) The robot and all equipment fit completely in one launch area and under the height limit">
+      <option x="493" y="267" width="30" height="20" value="false" />
+      <option x="547" y="267" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="1" name="Coral Nursery">
+    <task eh_task_name="m01_scoring_1" description="The coral tree is hanging on the coral tree support">
+      <option x="493" y="338" width="30" height="20" value="false" />
+      <option x="547" y="338" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m01_scoring_2" description="The bottom of the coral tree is in its holder">
+      <option x="493" y="365" width="30" height="20" value="false" />
+      <option x="547" y="365" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m01_scoring_3" description="The coral buds are flipped up">
+      <option x="493" y="392" width="30" height="20" value="false" />
+      <option x="547" y="392" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="2" name="Shark">
+    <task eh_task_name="m02_scoring_1" description="The shark is no longer touching the cave">
+      <option x="493" y="449" width="30" height="20" value="false" />
+      <option x="547" y="449" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m02_scoring_2" description="The shark is touching the mat at least partly in the shark habitat">
+      <option x="493" y="476" width="30" height="20" value="false" />
+      <option x="547" y="476" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="3" name="Coral Reef">
+    <task eh_task_name="m03_scoring_1" description="The coral reef is flipped up, not touching the mat">
+      <option x="493" y="533" width="30" height="20" value="false" />
+      <option x="547" y="533" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m03_scoring_2" description="Number of reef segments standing upright, outside of home, and touching the mat">
+      <option x="513" y="560" width="17" height="20" value="0" />
+      <option x="531" y="560" width="17" height="20" value="1" />
+      <option x="549" y="560" width="17" height="20" value="2" />
+      <option x="567" y="560" width="17" height="20" value="3" />
+    </task>
+  </mission>
+  <mission number="4" name="Scuba Diver">
+    <task eh_task_name="m04_scoring_1" description="The scuba diver is no longer touching the coral nursery">
+      <option x="493" y="644" width="30" height="20" value="false" />
+      <option x="547" y="644" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m04_scoring_2" description="The scuba diver is hanging on the coral reef support">
+      <option x="493" y="670" width="30" height="20" value="false" />
+      <option x="547" y="670" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="5" name="Angler Fish">
+    <task eh_task_name="m05_scoring_1" description="The scuba diver is no longer touching the coral nursery">
+      <option x="493" y="728" width="30" height="20" value="false" />
+      <option x="547" y="728" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="6" name="Raise The Mast">
+    <task eh_task_name="m06_scoring_1" description="The shipwreck's mast is completely raised">
+      <option x="493" y="826" width="30" height="20" value="false" />
+      <option x="547" y="826" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="7" name="Kraken's Treasure">
+    <task eh_task_name="m07_scoring_1" description="The treasure chest is completely outside the kraken’s nest">
+      <option x="493" y="883" width="30" height="20" value="false" />
+      <option x="547" y="883" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="8" name="Artificial Habitat">
+    <task eh_task_name="m08_scoring_1" description="Number of reef segments standing upright, outside of home, and touching the mat">
+      <option x="1121" y="88" width="17" height="20" value="0" />
+      <option x="1139" y="88" width="17" height="20" value="1" />
+      <option x="1157" y="88" width="17" height="20" value="2" />
+      <option x="1175" y="88" width="17" height="20" value="3" />
+      <option x="1193" y="88" width="17" height="20" value="4" />
+    </task>
+  </mission>
+  <mission number="9" name="Unexpected Encounter">
+    <task eh_task_name="m09_scoring_1" description="The unknown creature is released">
+      <option x="1110" y="144" width="30" height="20" value="false" />
+      <option x="1163" y="144" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m09_scoring_2" description="The unknown creature is at least partly in the cold seep">
+      <option x="1110" y="167" width="30" height="20" value="false" />
+      <option x="1163" y="167" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="10" name="Send Over The Submersible">
+    <task eh_task_name="m10_scoring_1" description="Your team's yellow flag is down">
+      <option x="1108" y="282" width="30" height="20" value="false" />
+      <option x="1162" y="282" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m10_scoring_2" description="The submersible is clearly closer to the opposing field">
+      <option x="1108" y="309" width="30" height="20" value="false" />
+      <option x="1162" y="309" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="11" name="Sonar Discovery">
+    <task eh_task_name="m11_scoring_1" description="Number of whales revealed">
+      <option x="1134" y="366" width="17" height="20" value="0" />
+      <option x="1157" y="366" width="17" height="20" value="1" />
+      <option x="1181" y="366" width="17" height="20" value="2" />
+    </task>
+  </mission>
+  <mission number="12" name="Feed The Whale">
+    <task eh_task_name="m12_scoring_1" description="Number of krill at least partly in the whale's mouth">
+      <option x="1119" y="422" width="17" height="20" value="0" />
+      <option x="1134" y="422" width="17" height="20" value="1" />
+      <option x="1150" y="422" width="17" height="20" value="2" />
+      <option x="1165" y="422" width="17" height="20" value="3" />
+      <option x="1180" y="422" width="17" height="20" value="4" />
+      <option x="1196" y="422" width="17" height="20" value="5" />
+    </task>
+  </mission>
+  <mission number="13" name="Changing Shipping Lanes">
+    <task eh_task_name="m13_scoring_1" description="The ship is in the new shipping lane, touching the mat">
+      <option x="1110" y="478" width="30" height="20" value="false" />
+      <option x="1163" y="478" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission number="14" name="Sample Collection">
+    <task eh_task_name="m14_scoring_1" description="The water sample is completely outside the water sample area">
+      <option x="1110" y="534" width="30" height="20" value="false" />
+      <option x="1163" y="534" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m14_scoring_2" description="The seabed sample is no longer touching the seabed">
+      <option x="1110" y="561" width="30" height="20" value="false" />
+      <option x="1163" y="561" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m14_scoring_3" description="The plankton sample is no longer touching the kelp forest">
+      <option x="1110" y="588" width="30" height="20" value="false" />
+      <option x="1163" y="588" width="35" height="20" value="true" />
+    </task>
+    <task eh_task_name="m14_scoring_4" description="Number of trident pieces no longer touching the shipwreck">
+      <option x="1135" y="615" width="17" height="20" value="0" />
+      <option x="1157" y="615" width="17" height="20" value="1" />
+      <option x="1180" y="615" width="17" height="20" value="2" />
+    </task>
+  </mission>
+  <mission number="15" name="Research Vessel">
+    <task eh_task_name="m15_scoring_1" description="Number of samples, trident part(s), or treasure chest at least partly in the research
+vessel's cargo area">
+      <option x="1123" y="672" width="10" height="20" value="0" />
+      <option x="1135" y="672" width="10" height="20" value="1" />
+      <option x="1148" y="672" width="10" height="20" value="2" />
+      <option x="1160" y="672" width="10" height="20" value="3" />
+      <option x="1173" y="672" width="10" height="20" value="4" />
+      <option x="1185" y="672" width="10" height="20" value="5" />
+      <option x="1198" y="672" width="10" height="20" value="6" />
+    </task>
+    <task eh_task_name="m15_scoring_2" description="The ports latch is at least partly in the research vessel's loop">
+      <option x="1110" y="713" width="30" height="20" value="false" />
+      <option x="1163" y="713" width="35" height="20" value="true" />
+    </task>
+  </mission>
+  <mission name="Precision Tokens">
+    <task eh_task_name="precision_tokens" description="Number of precision tokens remaining">
+      <option x="1105" y="770" width="17" height="20" value="0" />
+      <option x="1121" y="770" width="17" height="20" value="1" />
+      <option x="1136" y="770" width="17" height="20" value="2" />
+      <option x="1152" y="770" width="17" height="20" value="3" />
+      <option x="1167" y="770" width="17" height="20" value="4" />
+      <option x="1182" y="770" width="17" height="20" value="5" />
+      <option x="1198" y="770" width="17" height="20" value="6" />
+    </task>
+  </mission>
+  <mission name="Gracious Professionalism">
+    <task eh_task_name="gracious_professionalism" description="Gracious Professionalism displayed at the robot game table">
+      <option x="639" y="832" width="192" height="68" value="2" />
+      <option x="831" y="832" width="192" height="68" value="3" />
+      <option x="1024" y="832" width="192" height="68" value="4" />
+    </task>
+  </mission>
+</game>
