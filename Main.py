@@ -1,13 +1,16 @@
-"""Copyright (C) 2024 Interlocking Brick Software Collective
+"""
+Main.py: Entry point to Interlocking Brick Scoring Software
 
-Interlocking Brick Scoring Software is free software: you can 
-redistribute it and/or modify it under the terms of version 3 of 
+Copyright (C) 2024 Interlocking Brick Software Collective
+
+Interlocking Brick Scoring Software is free software: you can
+redistribute it and/or modify it under the terms of version 3 of
 the GNU General Public License as published by the Free Software
 Foundation.
 
-Interlocking Brick Scoring Software is distributed in the hope 
+Interlocking Brick Scoring Software is distributed in the hope
 that it will be useful, but WITHOUT ANY WARRANTY; without even the
-implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR 
+implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
 PURPOSE.  See the GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
