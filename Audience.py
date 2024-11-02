@@ -187,12 +187,13 @@ class TimerWidget(QWidget):
         self.remainingTime = INITIAL_TIME
         self.timerRunning = False
 
-        # Create buzzer sound media player
-        audioPath = os.path.join(os.path.dirname(__file__), "res\\end.wav")
+        # Create start/end sound media player
+        startAudioPath = os.path.join(os.path.dirname(__file__), "res", "start.wav")
+        endAudioPath = os.path.join(os.path.dirname(__file__), "res", "end.wav")
 
-        media = QUrl.fromLocalFile(audioPath)
+        self.startMedia = QUrl.fromLocalFile(startAudioPath)
+        self.endMedia = QUrl.fromLocalFile(endAudioPath)
         self.mediaPlayer = QMediaPlayer()
-        self.mediaPlayer.setSource(media)
 
         self.audioOutput = QAudioOutput()
         self.audioOutput.setVolume(100)
@@ -229,6 +230,10 @@ class TimerWidget(QWidget):
 
         # Start the timer
         if not self.timerRunning:
+            self.mediaPlayer.setSource(self.startMedia)
+            self.mediaPlayer.setPosition(0)
+            self.mediaPlayer.play()
+            
             self.timerRunning = True
             self.timer.start(1000)
 
@@ -252,6 +257,7 @@ class TimerWidget(QWidget):
         if self.remainingTime >= -3:
             # Show 0 for 3 seconds after the timer runs out
             if self.remainingTime == 0:
+                self.mediaPlayer.setSource(self.endMedia)
                 self.mediaPlayer.setPosition(0)
                 self.mediaPlayer.play()
 
