@@ -141,7 +141,7 @@ class MainWindow(QMainWindow):
             self.timerMode = QAction("Change Audience to Timer")
             self.timerMode.triggered.connect(self.changeMode)
             self.timerStart = QAction("Start Timer")
-            self.timerStart.triggered.connect(self.audienceDisplay.timer.startTimer)
+            self.timerStart.triggered.connect(self.startTimer)
             self.timerReset = QAction("Reset Timer")
             self.timerReset.triggered.connect(self.audienceDisplay.timer.resetTimer)
             self.rankingsTop = QAction("Scroll to Top of Rankings")
@@ -510,6 +510,13 @@ class MainWindow(QMainWindow):
         self.audienceDisplay.changeMode()
         self.timerMode.setText(f"Change Audience to {'Rankings' if self.audienceDisplay.timerMode else 'Timer'}")
         self.menuBar().update()
+
+    def startTimer(self):
+        Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
+        self.audienceDisplay.timer.startTimer()
+
+    def timerComplete(self):
+        self.matchNum.setValue(self.matchNum.value() + 1)
 
 
 if __name__ == "__main__":
