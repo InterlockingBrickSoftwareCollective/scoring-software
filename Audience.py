@@ -173,11 +173,7 @@ class AudienceWindow(QMainWindow):
         self.scroll.verticalScrollBar().setValue(0)
 
     def testSound(self):
-        if not self.timerMode:
-            self.parent.changeMode()
-
-        self.timer.startTimer()
-        self.timer.remainingTime = 0
+        self.timer.playSound("start")
 
 
 class TimerWidget(QWidget):
@@ -187,12 +183,10 @@ class TimerWidget(QWidget):
         self.remainingTime = INITIAL_TIME
         self.timerRunning = False
 
-        # Create start/end sound media player
-        startAudioPath = os.path.join(os.path.dirname(__file__), "res", "start.wav")
-        endAudioPath = os.path.join(os.path.dirname(__file__), "res", "end.wav")
-
-        self.startMedia = QUrl.fromLocalFile(startAudioPath)
-        self.endMedia = QUrl.fromLocalFile(endAudioPath)
+        # Create start/endgame/end sound media player
+        self.startMedia = QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "start.wav"))
+        self.endgameMedia = QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "endgame.wav"))
+        self.endMedia = QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "end.wav"))
         self.mediaPlayer = QMediaPlayer()
 
         self.audioOutput = QAudioOutput()
@@ -230,10 +224,8 @@ class TimerWidget(QWidget):
 
         # Start the timer
         if not self.timerRunning:
-            self.mediaPlayer.setSource(self.startMedia)
-            self.mediaPlayer.setPosition(0)
-            self.mediaPlayer.play()
-            
+            self.playSound("start")
+
             self.timerRunning = True
             self.timer.start(1000)
 
@@ -253,13 +245,15 @@ class TimerWidget(QWidget):
         # Update the timer label
         self.timerLabel.setText(timeStr)
 
+        # Endgame at 30 seconds
+        if self.remainingTime == 30:
+            self.playSound("endgame")
+
         # Decrement remaining time
         if self.remainingTime >= -3:
             # Show 0 for 3 seconds after the timer runs out
             if self.remainingTime == 0:
-                self.mediaPlayer.setSource(self.endMedia)
-                self.mediaPlayer.setPosition(0)
-                self.mediaPlayer.play()
+                self.playSound("end")
 
             self.remainingTime -= 1
         else:
@@ -268,3 +262,15 @@ class TimerWidget(QWidget):
 
     def showLogo(self):
         self.timerLabel.setPixmap(self.logo)
+
+    def playSound(self, sound: str):
+        soundMap = {
+            "start": self.startMedia,
+            "endgame": self.endgameMedia,
+            "end": self.endMedia,
+        }
+
+        self.mediaPlayer.setSource(soundMap[sound])
+        self.mediaPlayer.setPosition(0)
+        self.mediaPlayer.play()
+
