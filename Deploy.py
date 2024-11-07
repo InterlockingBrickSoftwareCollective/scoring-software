@@ -26,10 +26,12 @@ shutil.rmtree('./build/', ignore_errors=True)
 
 PyInstaller.__main__.run([
     'Main.py',
-    '-y',
-    '-F',
-    '-w',
-    '-i', 'res/BracketIcon.png',
+    '-y', # replace output directory
+    '-F', # single-file distribution
+    '-w', # no console window
+    '-i', 'icon.png',
     "--add-data", "res/Roboto-Regular.ttf:res",
+    "--add-data", "res/start.wav:res",
+    "--add-data", "res/endgame.wav:res",
     "--add-data", "res/end.wav:res",
 ])
