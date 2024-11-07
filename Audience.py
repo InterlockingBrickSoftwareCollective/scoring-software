@@ -55,7 +55,7 @@ class AudienceWindow(QMainWindow):
         self.dlg = None
         self.parent = parent
         self.timerMode = False
-        self.timer = TimerWidget()
+        self.timer = TimerWidget(parent)
 
         try:
             super().__init__()
@@ -177,8 +177,10 @@ class AudienceWindow(QMainWindow):
 
 
 class TimerWidget(QWidget):
-    def __init__(self):
+    def __init__(self, main):
         super().__init__()
+
+        self.main = main
 
         self.remainingTime = INITIAL_TIME
         self.timerRunning = False
@@ -259,6 +261,7 @@ class TimerWidget(QWidget):
         else:
             self.timer.stop()
             self.showLogo()
+            self.main.timerComplete()
 
     def showLogo(self):
         self.timerLabel.setPixmap(self.logo)
