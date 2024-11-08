@@ -109,9 +109,7 @@ class MainWindow(QMainWindow):
             self.mainWidget = QWidget()
             self.mainLayout = QGridLayout()
 
-            # Activate audience display
             self.audienceDisplay = AudienceWindow(self)
-            self.audienceDisplay.show()
 
             self.menuBar().setNativeMenuBar(False)
 
@@ -221,6 +219,11 @@ class MainWindow(QMainWindow):
 
             self.rerank()
             self.show()
+
+            # Render audience window, then bring focus back to main scoring window
+            self.audienceDisplay.show()
+            self.raise_()
+            self.activateWindow()
 
             application.exec()
         except Exception as err:

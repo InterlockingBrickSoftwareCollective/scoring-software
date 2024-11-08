@@ -94,7 +94,6 @@ class AudienceWindow(QMainWindow):
             self.setCentralWidget(self.mainWidget)
             self.setStyleSheet(sheet)
 
-            self.show()
         except Exception as err:
             print(err)
 
