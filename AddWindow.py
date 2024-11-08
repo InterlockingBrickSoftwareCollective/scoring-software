@@ -52,15 +52,18 @@ class AddWindow(QMainWindow):
 
             self.mainWidget = QWidget()
             self.mainWidget.setStyleSheet(sheet)
-
             self.mainLayout = QHBoxLayout()
-            self.mainLayout.addWidget(QLabel("Team Name:"))
-            self.name = QLineEdit()
-            self.mainLayout.addWidget(self.name)
+
             self.mainLayout.addWidget(QLabel("Team Number:"))
             self.number = QLineEdit()
-            self.number.returnPressed.connect(self.addTeam)
+            self.number.setFixedWidth(70)
             self.mainLayout.addWidget(self.number)
+
+            self.mainLayout.addWidget(QLabel("Team Name:"))
+            self.name = QLineEdit()
+            self.name.returnPressed.connect(self.addTeam)
+            self.mainLayout.addWidget(self.name)
+            
             self.add = QPushButton("Add Team")
             self.add.pressed.connect(self.addTeam)
             self.mainLayout.addWidget(self.add)
@@ -80,6 +83,7 @@ class AddWindow(QMainWindow):
             team = Team(self.name.text(), int(self.number.text()))
             self.name.setText("")
             self.number.setText("")
+            self.number.setFocus()
             self.parent.addSingleTeam(team)
         except Exception as err:
             print(err)
