@@ -133,24 +133,22 @@ class MainWindow(QMainWindow):
 
             # Audience menu options
             self.audienceMenu = QMenu("Audience Display Options")
-            self.menuBar().addMenu(self.audienceMenu)
-
-            self.timerMode = QAction("Change Audience to Timer")
-            self.timerMode.triggered.connect(self.changeMode)
-            self.timerStart = QAction("Start Timer")
-            self.timerStart.triggered.connect(self.startTimer)
-            self.timerReset = QAction("Reset Timer")
-            self.timerReset.triggered.connect(self.audienceDisplay.timer.resetTimer)
             self.rankingsTop = QAction("Scroll to Top of Rankings")
             self.rankingsTop.triggered.connect(self.audienceDisplay.scrollToTop)
             self.testAudio = QAction("Test Sound")
             self.testAudio.triggered.connect(self.audienceDisplay.testSound)
+            self.audienceMenu.addActions([self.rankingsTop, self.testAudio])
+            
+            # Timer control buttons
+            self.timerMode = QAction("Show Timer")
+            self.timerMode.triggered.connect(self.changeMode)
+            self.timerCtl = QAction("Start Timer")
+            self.timerCtl.triggered.connect(self.handleTimerCtl)
+            self.timerCtl.setDisabled(True) # Audience display starts on rank display
 
-            # Add menus to bar
-            self.audienceMenu.addActions(
-                [self.timerMode, self.timerStart, self.timerReset, self.rankingsTop, self.testAudio])
             self.menuBar().addActions([self.insert, self.export])
             self.menuBar().addMenu(self.audienceMenu)
+            self.menuBar().addActions([self.timerMode, self.timerCtl])
 
             # Create config area
             self.configLayout = QGridLayout()
@@ -493,15 +491,28 @@ class MainWindow(QMainWindow):
 
     def changeMode(self):
         self.audienceDisplay.changeMode()
-        self.timerMode.setText(f"Change Audience to {'Rankings' if self.audienceDisplay.timerMode else 'Timer'}")
+        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.timerMode else 'Timer'}")
+        self.timerCtl.setDisabled(False if self.audienceDisplay.timerMode else True)
         self.menuBar().update()
 
-    def startTimer(self):
-        Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
-        self.audienceDisplay.timer.startTimer()
+    def handleTimerCtl(self):
+        if not self.audienceDisplay.timer.timerRunning:
+            # Timer isn't running -- start timer and lock out mode control
+            Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
+            self.audienceDisplay.timer.startTimer()
+            self.timerCtl.setText("Reset Timer")
+            self.timerMode.setDisabled(True)
+        else:
+            # Timer was running -- reset timer and unlock mode control
+            self.audienceDisplay.timer.resetTimer()
+            self.timerCtl.setText("Start Timer")
+            self.timerMode.setDisabled(False)
 
     def timerComplete(self):
         self.matchNum.setValue(self.matchNum.value() + 1)
+        self.changeMode()
+        self.timerCtl.setText("Start Timer")
+        self.timerMode.setDisabled(False)
 
 
 if __name__ == "__main__":
