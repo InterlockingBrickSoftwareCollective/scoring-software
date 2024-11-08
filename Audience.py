@@ -101,7 +101,7 @@ class AudienceWindow(QMainWindow):
         try:
             if self.timerMode:
                 self.vbox.insertWidget(0, self.timer)
-                self.timer.showLogo()
+                self.timer.paintTimer()
             else:
                 for team in self.parent.teams[::-1]:
                     widget = self.makeTeamWidget(team)
@@ -209,19 +209,23 @@ class TimerWidget(QWidget):
         self.timer.timeout.connect(self.updateTimer)
 
         # Initial update of the timer label
-        self.updateTimer()
+        self.paintTimer()
         self.setLayout(self.timerLayout)
 
-        # Make end "splash screen"
-        self.logo = QPixmap(os.path.join(os.path.dirname(__file__), "res\\logo.png"))
-        self.logo = self.logo.scaledToWidth(int(screen.width() * 0.8), Qt.TransformationMode.SmoothTransformation)
+    def paintTimer(self):
+        # Convert remaining time to mm:ss format
+        showTime = max(0, self.remainingTime)
+        minutes = showTime // 60
+        seconds = showTime % 60
+        timeStr = f"{minutes:01d}:{seconds:02d}"
+
+        # Update the timer label
+        self.timerLabel.setText(timeStr)
 
     def startTimer(self):
         # Reset timer if it is already done
         if self.remainingTime <= 0:
             self.resetTimer()
-
-        self.timerLabel.setText("2:30")
 
         # Start the timer
         if not self.timerRunning:
@@ -234,36 +238,26 @@ class TimerWidget(QWidget):
         self.timer.stop()  # Stop the timer
         self.timerRunning = False
         self.remainingTime = INITIAL_TIME
-        self.updateTimer()
+        self.paintTimer()
 
     def updateTimer(self):
-        # Convert remaining time to mm:ss format
-        showTime = max(0, self.remainingTime)
-        minutes = showTime // 60
-        seconds = showTime % 60
-        timeStr = f"{minutes:01d}:{seconds:02d}"
+        # Timer tick and repaint
+        self.remainingTime -= 1
+        self.paintTimer()
 
-        # Update the timer label
-        self.timerLabel.setText(timeStr)
 
-        # Endgame at 30 seconds
-        if self.remainingTime == 30:
-            self.playSound("endgame")
-
-        # Decrement remaining time
-        if self.remainingTime >= -3:
-            # Show 0 for 3 seconds after the timer runs out
+        if self.remainingTime >= -3: # Show "0:00" for 3 seconds after the timer runs out
+            # Endgame at 30 seconds
+            if self.remainingTime == 30:
+                self.playSound("endgame")
+        
+            # End of match at 0 seconds
             if self.remainingTime == 0:
-                self.playSound("end")
-
-            self.remainingTime -= 1
+                self.playSound("end") 
         else:
-            self.timer.stop()
-            self.showLogo()
             self.main.timerComplete()
-
-    def showLogo(self):
-        self.timerLabel.setPixmap(self.logo)
+            # Reset timer after main callback to prevent a "flash" of the newly-reset timer
+            self.resetTimer()
 
     def playSound(self, sound: str):
         soundMap = {
