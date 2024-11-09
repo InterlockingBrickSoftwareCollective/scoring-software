@@ -28,6 +28,7 @@ from datetime import datetime
 class TeamEntry:
     name: str
     teamnumber: int
+    pit: int
 
 
 @dataclass
@@ -73,8 +74,8 @@ def deinit():
 
 def loadTeams() -> list:
     """Return a list of TeamEntry objects representing all saved teams."""
-    _cur.execute("SELECT teamnumber, name FROM teams")
-    return [TeamEntry(teamnumber=t[0], name=t[1]) for t in _cur.fetchall()]
+    _cur.execute("SELECT teamnumber, name, pit FROM teams")
+    return [TeamEntry(teamnumber=t[0], name=t[1], pit=t[2]) for t in _cur.fetchall()]
 
 
 def loadScores() -> list:
@@ -83,10 +84,10 @@ def loadScores() -> list:
     return [ScoreEntry(teamnumber=s[0], round=s[1], score=s[2], comments=s[3]) for s in _cur.fetchall()]
 
 
-def saveTeam(teamnumber: int, name: str):
+def saveTeam(teamnumber: int, name: str, pit: int):
     """Create or update a team (number and name)."""
     # Allow renaming teams by using INSERT OR REPLACE INTO
-    _cur.execute("INSERT OR REPLACE INTO teams VALUES (?, ?)", (teamnumber, name))
+    _cur.execute("INSERT OR REPLACE INTO teams VALUES (?, ?, ?)", (teamnumber, name, pit))
     _db.commit()
 
 
@@ -157,8 +158,8 @@ def _createTables():
     """Internal method to create tables for a freshly-initialized database."""
     _cur.executescript("""
                        PRAGMA application_id = 0;
-                       PRAGMA user_version = 0;
-                       CREATE TABLE teams(teamnumber type UNIQUE, name);
+                       PRAGMA user_version = 1;
+                       CREATE TABLE teams(teamnumber type UNIQUE, name, pit);
                        CREATE TABLE scores(slug type UNIQUE, teamnumber, round, score, comments);
                        CREATE TABLE audit(timestamp, tag, data);
                        CREATE TABLE log(timestamp, tag, message);

@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(sheet)
 
             # Restore any teams and scores in the database
-            self.addTeams([Team(team.name, team.teamnumber) for team in Substrate.loadTeams()])
+            self.addTeams([Team(team.name, team.teamnumber, team.pit) for team in Substrate.loadTeams()])
 
             for score in Substrate.loadScores():
                 team = self.fetchTeam(score.teamnumber)
@@ -268,11 +268,11 @@ class MainWindow(QMainWindow):
             if not filename.endswith(".csv"):
                 filename += ".csv"
 
-            sort = sorted(self.teams, key=lambda x: x.number, reverse=False)
+            sort = sorted(self.teams, key=lambda x: x.pit if x.pit != 0 else x.number, reverse=False)
             with open(filename, "w") as f:
-                f.write("Team Name,Team Number,Round 1 Score,Round 2 Score,Round 3 Score\n")
+                f.write("Pit #,Team Name,Team Number,Round 1 Score,Round 2 Score,Round 3 Score\n")
                 for team in sort:
-                    f.write(f"{team.name},{team.number},{team.scores[0]},{team.scores[1]},{team.scores[2]}\n")
+                    f.write(f"{team.pit},{team.name},{team.number},{team.scores[0]},{team.scores[1]},{team.scores[2]}\n")
 
             dialog.close()
             return True
