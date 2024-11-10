@@ -26,15 +26,21 @@ from PyQt6.QtWidgets import *
 
 import EventHub
 
+sheet = """
+QComboBox {
+    font-size: 12px;
+}
+"""
 
-class ScoresheetDialog(QDialog):
+class ScoresheetDialog(QMainWindow):
     def __init__(self, parent, config_path):
         super().__init__(parent)
         self.parent = parent
-        self.setWindowTitle("Scoresheet Entry")
 
         # Load game metadata
         self.game = ET.parse(config_path).getroot()
+        self.tasks = {}
+        self.score = None
 
         # Initialize QRects and clicked status
         for element in self.game.iter():
@@ -43,11 +49,16 @@ class ScoresheetDialog(QDialog):
                 element.attrib["rect"] = QRect(x, y, w, h)
                 element.attrib["clicked"] = False
 
+        # Window setup
+        self.setWindowTitle("Scoresheet Entry")
+        self.widget = QWidget()
+        self.widget.setStyleSheet(sheet)
+
         # Layout to hold image and submit button
-        layout = QVBoxLayout(self)
+        layout = QVBoxLayout(self.widget)
 
         # Label to display the image
-        self.image_label = QLabel(self)
+        self.image_label = QLabel(self.widget)
         image_path = os.path.join("res", "scoresheet-75.png")
         self.pixmap = QPixmap(image_path)
         if self.pixmap.isNull():
@@ -61,14 +72,14 @@ class ScoresheetDialog(QDialog):
         # Team dropdown
         teamSelections = [""]
         teamSelections.extend(map(lambda x: str(x.number), sorted(parent.teams, key=lambda x: x.number, reverse=False)))
-        self.team = QComboBox(self)
+        self.team = QComboBox(self.widget)
         self.team.addItems(teamSelections)
-        self.team.setGeometry(348, 49, 60, 18)
+        self.team.setGeometry(346, 49, 60, 18)
 
         # Match dropdown
-        self.match = QComboBox(self)
+        self.match = QComboBox(self.widget)
         self.match.addItems(["", "1", "2", "3"])
-        self.match.setGeometry(410, 49, 59, 18)
+        self.match.setGeometry(408, 49, 59, 18)
 
         # Bottom bar
         bottom_layout = QHBoxLayout()
@@ -84,11 +95,17 @@ class ScoresheetDialog(QDialog):
         self.calc_submit_button.clicked.connect(self.on_calc_submit)
         bottom_layout.addWidget(self.calc_submit_button)
 
+        # Assemble together
         layout.addLayout(bottom_layout)
-        self.setLayout(layout)
+        self.widget.setLayout(layout)
+        self.setCentralWidget(self.widget)
 
-        self.tasks = {}
-        self.score = None
+        self.show()
+        self.move(100, 100)
+
+        # Lock size after showing
+        current_size = self.size()
+        self.setFixedSize(current_size.width(), current_size.height())
 
     def mousePressEvent(self, event):
         # Capture the position of the mouse click
@@ -183,4 +200,4 @@ class ScoresheetDialog(QDialog):
             team.setScore(int(self.match.currentText()), self.score, str(self.tasks))
 
             self.parent.rerank()
-            self.accept()
+            self.close()

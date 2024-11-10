@@ -344,7 +344,6 @@ class MainWindow(QMainWindow):
         else:
             try:
                 self.insertWindow = ScoresheetDialog(self, os.path.join("res", "submerged.xml"))
-                self.insertWindow.exec()
             except Exception as e:
                 QMessageBox.critical(self, "Error", "Problem using scoresheet entry!\nUse score calculator and manual score entry.")
                 self.scoresheet.setEnabled(False)
