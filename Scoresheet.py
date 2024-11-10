@@ -195,9 +195,20 @@ class ScoresheetDialog(QMainWindow):
         elif self.match.currentText() == "":
             QMessageBox.critical(self, "Error", "No match selected!")
         else:
-            print(f"Storing team {self.team.currentText()} match {self.match.currentText()} score {self.score}")
-            team = self.parent.fetchTeam(int(self.team.currentText()))
-            team.setScore(int(self.match.currentText()), self.score, str(self.tasks))
+            teamNum = int(self.team.currentText())
+            matchNum = int(self.match.currentText())
+
+            team = self.parent.fetchTeam(teamNum)
+
+            if team.scores[matchNum - 1] != -1:
+                confirm = QMessageBox.question(self, "Confirmation",
+                                                f"Team {teamNum} already has a score for match {matchNum};\nare you sure you want to overwrite it?",
+                                                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+                if confirm == QMessageBox.StandardButton.No:
+                    return
+
+            print(f"Storing team {teamNum} match {matchNum} score {self.score}")
+            team.setScore(matchNum, self.score, str(self.tasks))
 
             self.parent.rerank()
             self.close()
