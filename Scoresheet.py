@@ -20,7 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import os
 import xml.etree.ElementTree as ET
 
-from PyQt6.QtCore import QPoint, QRect, Qt
+from PyQt6.QtCore import QPoint, QRect, Qt, QTimer
 from PyQt6.QtGui import QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import *
 
@@ -95,6 +95,16 @@ class ScoresheetDialog(QMainWindow):
         self.calc_submit_button.clicked.connect(self.on_calc_submit)
         bottom_layout.addWidget(self.calc_submit_button)
 
+        # Timer
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.updateTimer)
+        self.time_elapsed = 0
+        self.timer_label = QLabel(self)
+        self.timer_label.setFixedWidth(100)
+        self.timer_label.setText("0:00")
+        self.timer.start(1000)
+        bottom_layout.addWidget(self.timer_label)
+
         # Assemble together
         layout.addLayout(bottom_layout)
         self.widget.setLayout(layout)
@@ -106,6 +116,15 @@ class ScoresheetDialog(QMainWindow):
         # Lock size after showing
         current_size = self.size()
         self.setFixedSize(current_size.width(), current_size.height())
+
+    def updateTimer(self):
+        self.time_elapsed += 1
+        # Convert remaining time to m:ss format
+        showTime = max(0, self.time_elapsed)
+        minutes = showTime // 60
+        seconds = showTime % 60
+        timeStr = f"{minutes:01d}:{seconds:02d}"
+        self.timer_label.setText(timeStr)
 
     def mousePressEvent(self, event):
         # Capture the position of the mouse click
