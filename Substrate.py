@@ -86,9 +86,29 @@ def loadScores() -> list:
 
 def saveTeam(teamnumber: int, name: str, pit: int):
     """Create or update a team (number and name)."""
+    # Check if team already exists
+    _cur.execute("SELECT name, pit FROM teams WHERE teamnumber = ?", (teamnumber,))
+    maybe_old_team = _cur.fetchall()
+    old_team = None if len(maybe_old_team) == 0 else (maybe_old_team[0][0], maybe_old_team[0][1])
+
     # Allow renaming teams by using INSERT OR REPLACE INTO
     _cur.execute("INSERT OR REPLACE INTO teams VALUES (?, ?, ?)", (teamnumber, name, pit))
-    _db.commit()
+
+    if old_team is None:
+        auditEntry = {
+            "teamnumber": teamnumber,
+            "name": name
+        }
+        writeAuditEntry("team_add", auditEntry)
+    else:
+        auditEntry = {
+            "teamnumber": teamnumber,
+            "old_name": old_team[0],
+            "new_name": name,
+            "old_pit": old_team[1],
+            "new_pit": pit
+        }
+        writeAuditEntry("team_update", auditEntry)
 
 
 def saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
