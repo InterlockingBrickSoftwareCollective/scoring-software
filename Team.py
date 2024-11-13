@@ -21,7 +21,7 @@ import Substrate
 
 
 class Team:
-    def __init__(self, name, number, pit=0):
+    def __init__(self, name, number, pit=0, from_db=False):
         try:
             self.name = name
             self.number = int(number)
@@ -32,7 +32,8 @@ class Team:
             self.secondHighest = -1
             self.thirdHighest = -1
             self.rank = 1E10
-            Substrate.saveTeam(number, name, pit)
+            if not from_db:
+                Substrate.saveTeam(number, name, pit)
         except Exception as err:
             print(err)
 

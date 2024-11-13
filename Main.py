@@ -209,7 +209,7 @@ class MainWindow(QMainWindow):
             self.setStyleSheet(sheet)
 
             # Restore any teams and scores in the database
-            self.addTeams([Team(team.name, team.teamnumber, team.pit) for team in Substrate.loadTeams()])
+            self.addTeams([Team(team.name, team.teamnumber, team.pit, from_db=True) for team in Substrate.loadTeams()])
 
             for score in Substrate.loadScores():
                 team = self.fetchTeam(score.teamnumber)
@@ -424,10 +424,16 @@ class MainWindow(QMainWindow):
                 roundWidget.setFixedWidth(70)
                 layout.addWidget(roundWidget, 1, num + 3, 4, 1)
 
+            rename = QPushButton("Rename")
+            rename.setFixedSize(70, 25)
+            rename.pressed.connect(lambda number=team.number, card=card: self.renameCheck(number, card))
+            layout.addWidget(rename, 0, 6, 1, 1)
+            card.setLayout(layout)
+
             delete = QPushButton("Delete")
-            delete.setFixedSize(60, 40)
+            delete.setFixedSize(70, 25)
             delete.pressed.connect(lambda number=team.number, card=card: self.deleteCheck(number, card))
-            layout.addWidget(delete, 0, 6, 5, 1)
+            layout.addWidget(delete, 2, 6, 1, 1)
             card.setLayout(layout)
 
             return card
@@ -452,10 +458,36 @@ class MainWindow(QMainWindow):
         # TODO Make this useful
         pass
 
+    def renameCheck(self, number, card):
+        self.dlg = QDialog()
+        message = QLabel(f"Renaming team #{number}:")
+        new_name = QLineEdit()
+        new_name.setObjectName("new_name")
+        new_name.returnPressed.connect(lambda n = number: self.renameTeam(n))
+        rename = QPushButton("Rename")
+        rename.pressed.connect(lambda n = number: self.renameTeam(n))
+
+        main = QHBoxLayout()
+
+        main.addWidget(message)
+        main.addWidget(new_name)
+        main.addWidget(rename)
+
+        self.dlg.setLayout(main)
+        self.dlg.show()
+
+    def renameTeam(self, number: int):
+        team = self.fetchTeam(number)
+        team.name = self.dlg.findChild(QLineEdit).text()
+        Substrate.saveTeam(int(number), team.name, team.pit)
+
+        self.rerank()
+        self.dlg.close()
+
     def deleteCheck(self, number, card):
         try:
             self.dlg = QDialog()
-            message = QLabel("Are you sure you want to delete this team?")
+            message = QLabel(f"Are you sure you want to delete team #{number}?")
             yes = QPushButton("Delete")
             yes.pressed.connect(lambda number=number, card=card: self.deleteTeam(number, card))
             cancel = QPushButton("Cancel")
