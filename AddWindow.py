@@ -30,6 +30,10 @@ QLineEdit {
     font-size: 16px;
 }
 
+QSpinBox {
+    font-size: 16px;
+}
+
 QPushButton {
     background-color: #000000;
     color: #ffffff;
@@ -41,6 +45,8 @@ QPushButton {
 
 
 class AddWindow(QMainWindow):
+    pitNumber = 1  # TODO: query this from the database to get next pit
+
     def __init__(self, parent):
         try:
             super().__init__()
@@ -53,6 +59,13 @@ class AddWindow(QMainWindow):
             self.mainWidget = QWidget()
             self.mainWidget.setStyleSheet(sheet)
             self.mainLayout = QHBoxLayout()
+
+            self.mainLayout.addWidget(QLabel("Pit Number:"))
+            self.pit = QSpinBox()
+            self.pit.setMinimum(1)
+            self.pit.setFixedWidth(60)
+            self.pit.setValue(AddWindow.pitNumber)
+            self.mainLayout.addWidget(self.pit)
 
             self.mainLayout.addWidget(QLabel("Team Number:"))
             self.number = QLineEdit()
@@ -80,10 +93,13 @@ class AddWindow(QMainWindow):
         try:
             if len(self.name.text()) == 0 or len(self.number.text()) == 0:
                 return
-            team = Team(self.name.text(), int(self.number.text()))
+            team = Team(self.name.text(), int(self.number.text()), self.pit.value())
+            self.parent.addSingleTeam(team)
+
+            AddWindow.pitNumber = self.pit.value() + 1
+            self.pit.setValue(AddWindow.pitNumber)
             self.name.setText("")
             self.number.setText("")
             self.number.setFocus()
-            self.parent.addSingleTeam(team)
         except Exception as err:
             print(err)

@@ -21,17 +21,18 @@ import Substrate
 
 
 class Team:
-    def __init__(self, name, number):
+    def __init__(self, name, number, pit=0):
         try:
             self.name = name
             self.number = int(number)
+            self.pit = pit
             self.scores = [-1, -1, -1]
             self.highScore = -1
             self.highScoreIndex = -1
             self.secondHighest = -1
             self.thirdHighest = -1
             self.rank = 1E10
-            Substrate.saveTeam(number, name)
+            Substrate.saveTeam(number, name, pit)
         except Exception as err:
             print(err)
 
