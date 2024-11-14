@@ -18,8 +18,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import csv
+import json
 import math
 import sys
+import threading
 
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
@@ -29,6 +31,7 @@ import About
 import CycleTimeReport
 import ResourceManager
 import Substrate
+import Sync
 from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
@@ -155,6 +158,9 @@ class MainWindow(QMainWindow):
             self.testAudio.triggered.connect(self.audienceDisplay.testSound)
             self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio])
 
+            self.forceSync = QAction("Force Sync")
+            self.forceSync.triggered.connect(self.doForceSync)
+
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
             self.timerMode.triggered.connect(self.changeMode)
@@ -167,7 +173,7 @@ class MainWindow(QMainWindow):
                 self.menuBar().addAction(self.scoresheet)
             self.menuBar().addAction(self.export)
             self.menuBar().addMenu(self.audienceMenu)
-            self.menuBar().addActions([self.timerMode, self.timerCtl])
+            self.menuBar().addActions([self.forceSync, self.timerMode, self.timerCtl])
 
             # Create config area
             self.configLayout = QGridLayout()
@@ -253,6 +259,15 @@ class MainWindow(QMainWindow):
 
             self.rerank()
             self.show()
+
+            # Start sync thread
+            self.syncThread = threading.Thread(target=Sync.request_thread, daemon=True)
+            self.syncThread.start()
+
+            # Load sync credentials
+            with open("sync.json", "r") as syncCreds:
+                syncSettings = json.loads(syncCreds.read())
+                Sync.setup_sync(syncSettings)
 
             # Render audience window, then bring focus back to main scoring window
             self.audienceDisplay.show()
@@ -426,6 +441,7 @@ class MainWindow(QMainWindow):
         try:
             self.teams.append(team)
             self.rerank()
+            Sync.post_teams(self.teams)
         except Exception as err:
             print(err)
 
@@ -433,6 +449,7 @@ class MainWindow(QMainWindow):
         try:
             self.teams.extend(teams)
             self.rerank()
+            Sync.post_teams(self.teams)
         except Exception as err:
             print(err)
 
@@ -573,6 +590,7 @@ class MainWindow(QMainWindow):
         team = self.fetchTeam(number)
         team.name = self.dlg.findChild(QLineEdit).text()
         Substrate.saveTeam(int(number), team.name, team.pit)
+        Sync.post_teams(self.teams)
 
         self.rerank()
         self.dlg.close()
@@ -624,19 +642,23 @@ class MainWindow(QMainWindow):
         self.menuBar().update()
 
     def handleTimerCtl(self):
+        matchNum = int(self.matchNum.value())
         if not self.audienceDisplay.timer.timerRunning:
             # Timer isn't running -- start timer and lock out mode control
-            Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
+            Substrate.writeLogEntry("match_start", f"{matchNum}")
+            Sync.post_match_status(matchNum, "running")
             self.audienceDisplay.timer.startTimer()
             self.timerCtl.setText("Reset Timer")
             self.timerMode.setDisabled(True)
         else:
             # Timer was running -- reset timer and unlock mode control
+            Sync.post_match_status(matchNum, "aborted")
             self.audienceDisplay.timer.resetTimer()
             self.timerCtl.setText("Start Timer")
             self.timerMode.setDisabled(False)
 
     def timerComplete(self):
+        Sync.post_match_status(int(self.matchNum.value() + 1), "queueing")
         self.matchNum.setValue(self.matchNum.value() + 1)
         self.changeMode()
         self.timerCtl.setText("Start Timer")
@@ -648,6 +670,9 @@ class MainWindow(QMainWindow):
     def practiceTimerComplete(self):
         if self.practiceTimerCtl is not None:
             self.practiceTimerCtl.handleTimerComplete()
+
+    def doForceSync(self):
+        Sync.sync_event(self.matchNum.value(), "queueing", self.teams)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
