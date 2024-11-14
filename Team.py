@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import Substrate
-
+import Sync
 
 class Team:
     def __init__(self, name, number, pit=0, from_db=False):
@@ -48,6 +48,7 @@ class Team:
             self.scores[roundNum - 1] = score
             if not from_db:
                 Substrate.saveScore(self.number, roundNum, score)
+                Sync.post_score(self.number, roundNum, score)
 
             if scoresheet is not None:
                 Substrate.saveScoresheet(self.number, roundNum, scoresheet)
