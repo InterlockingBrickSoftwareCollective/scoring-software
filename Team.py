@@ -44,6 +44,7 @@ class Team:
         try:
             self.scores[roundNum - 1] = score
             Substrate.saveScore(self.number, roundNum, score)
+            Sync.post_score(self.number, roundNum, score)
 
             # Continuously update high score, second highest, and third highest
             rankings = list(self.scores)
