@@ -30,6 +30,7 @@ import Substrate
 from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
+from PracticeTimerWindow import PracticeTimerWindow
 from Team import Team
 
 sheet = """
@@ -131,12 +132,14 @@ class MainWindow(QMainWindow):
 
             # Audience menu options
             self.audienceMenu = QMenu("Audience Display Options")
+            practiceTimer = QAction("Practice Timer...")
+            practiceTimer.triggered.connect(self.practiceTimerControl)
             self.rankingsTop = QAction("Scroll to Top of Rankings")
             self.rankingsTop.triggered.connect(self.audienceDisplay.scrollToTop)
             self.testAudio = QAction("Test Sound")
             self.testAudio.triggered.connect(self.audienceDisplay.testSound)
-            self.audienceMenu.addActions([self.rankingsTop, self.testAudio])
-            
+            self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio])
+
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
             self.timerMode.triggered.connect(self.changeMode)
@@ -526,8 +529,8 @@ class MainWindow(QMainWindow):
 
     def changeMode(self):
         self.audienceDisplay.changeMode()
-        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.timerMode else 'Timer'}")
-        self.timerCtl.setDisabled(False if self.audienceDisplay.timerMode else True)
+        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != "ranks" else 'Timer'}")
+        self.timerCtl.setDisabled(False if self.audienceDisplay.mode != "ranks" else True)
         self.menuBar().update()
 
     def handleTimerCtl(self):
@@ -549,6 +552,12 @@ class MainWindow(QMainWindow):
         self.timerCtl.setText("Start Timer")
         self.timerMode.setDisabled(False)
 
+    def practiceTimerControl(self):
+        self.practiceTimerCtl = PracticeTimerWindow(self)
+
+    def practiceTimerComplete(self):
+        if self.practiceTimerCtl is not None:
+            self.practiceTimerCtl.handleTimerComplete()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
