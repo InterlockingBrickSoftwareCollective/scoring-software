@@ -529,7 +529,7 @@ class MainWindow(QMainWindow):
 
     def changeMode(self):
         self.audienceDisplay.changeMode()
-        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != "ranks" else 'Timer'}")
+        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != 'ranks' else 'Timer'}")
         self.timerCtl.setDisabled(False if self.audienceDisplay.mode != "ranks" else True)
         self.menuBar().update()
 
