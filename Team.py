@@ -18,7 +18,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import Substrate
-
+import Sync
 
 class Team:
     def __init__(self, name, number, pit=0, from_db=False):
