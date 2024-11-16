@@ -33,12 +33,28 @@ class TeamSyncObject:
     teamnumber: int
     pit: int
 
+
+@dataclass
+class TeamStateSync:
+    name: str
+    teamnumber: int
+    pit: int
+    round1: int
+    round2: int
+    round3: int
+
+    def json(self):
+        return {"name": self.name, "teamnumber": self.teamnumber, "pit": self.pit,
+                "round1": self.round1, "round2": self.round2, "round3": self.round3}
+
+
 class TeamSync:
     def __init__(self, teams: List[TeamSyncObject]):
         self.teams = teams
 
     def json(self):
         return [{"name": t.name, "number": t.teamnumber, "pit": t.pit} for t in self.teams]
+
 
 @dataclass
 class MatchSync:
@@ -47,7 +63,8 @@ class MatchSync:
 
     def json(self):
         return {"match": self.match_num, "status": self.status}
-    
+
+ 
 @dataclass
 class ScoreSync:
     teamnumber: int
@@ -56,6 +73,17 @@ class ScoreSync:
 
     def json(self):
         return {"team": self.teamnumber, "match": self.match, "score": self.score}
+
+
+@dataclass
+class EventSync:
+    match_num: int
+    status: str
+    teams: List[TeamStateSync]
+
+    def json(self):
+        return {"match": self.match_num, "status": self.status, "teams": self.teams}
+
 
 sync_url = None
 event_code = None
@@ -87,6 +115,19 @@ def post_score(team: int, round: int, score: int):
     request_queue.put(ScoreSync(team, round, score))
 
 
+def sync_event(match_number: str, match_state: str, teams: List[Team]):
+    event_state = EventSync(match_number, match_state, [])
+    for t in teams:
+        event_state.teams.append(TeamStateSync(t.name, t.number,
+                                                  t.pit, t.scores[0],
+                                                  t.scores[1], t.scores[2]).json())
+    #request_queue.put(event_state)
+    reflector_base = f"{sync_url}/{event_code}"
+    auth = {"apikey": apikey}
+    resp = requests.post(f"{reflector_base}/sync", headers=auth, json=event_state.json(), timeout=5)
+    print(resp)
+
+
 def request_thread():
     # Wait for setup before pushing queued requests
     setup_event.wait()
@@ -101,13 +142,16 @@ def request_thread():
                 break
 
             if isinstance(req, TeamSync):
-                resp = requests.post(f"{reflector_base}/teams", headers=auth, json=req.json())
+                resp = requests.post(f"{reflector_base}/teams", headers=auth, json=req.json(), timeout=5)
                 print(resp)
             elif isinstance(req, MatchSync):
-                resp = requests.post(f"{reflector_base}/match", headers=auth, json=req.json())
+                resp = requests.post(f"{reflector_base}/match", headers=auth, json=req.json(), timeout=5)
                 print(resp)
             elif isinstance(req, ScoreSync):
-                resp = requests.post(f"{reflector_base}/scores", headers=auth, json=req.json())
+                resp = requests.post(f"{reflector_base}/scores", headers=auth, json=req.json(), timeout=5)
+                print(resp)
+            elif isinstance(req, EventSync):
+                resp = requests.post(f"{reflector_base}/sync", headers=auth, json=req.json(), timeout=5)
                 print(resp)
         except:
             return
