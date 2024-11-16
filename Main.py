@@ -157,6 +157,9 @@ class MainWindow(QMainWindow):
             self.testAudio.triggered.connect(self.audienceDisplay.testSound)
             self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio])
 
+            self.forceSync = QAction("Force Sync")
+            self.forceSync.triggered.connect(self.doForceSync)
+
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
             self.timerMode.triggered.connect(self.changeMode)
@@ -169,7 +172,7 @@ class MainWindow(QMainWindow):
                 self.menuBar().addAction(self.scoresheet)
             self.menuBar().addAction(self.export)
             self.menuBar().addMenu(self.audienceMenu)
-            self.menuBar().addActions([self.timerMode, self.timerCtl])
+            self.menuBar().addActions([self.forceSync, self.timerMode, self.timerCtl])
 
             # Create config area
             self.configLayout = QGridLayout()
@@ -661,6 +664,9 @@ class MainWindow(QMainWindow):
     def practiceTimerComplete(self):
         if self.practiceTimerCtl is not None:
             self.practiceTimerCtl.handleTimerComplete()
+
+    def doForceSync(self):
+        Sync.sync_event(self.matchNum.value(), "queueing", self.teams)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
