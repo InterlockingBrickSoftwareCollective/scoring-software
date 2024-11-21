@@ -274,9 +274,8 @@ class TimerWidget(QWidget):
             if self.remainingTime == 0:
                 self.playSound("end")
         else:
+            self.timerRunning = False
             self.main.timerComplete()
-            # Reset timer after main callback to prevent a "flash" of the newly-reset timer
-            self.resetTimer()
 
     def playSound(self, sound: str):
         self.mediaPlayer.setSource(media[sound])
