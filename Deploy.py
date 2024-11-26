@@ -34,4 +34,6 @@ PyInstaller.__main__.run([
     "--add-data", "res/start.wav:res",
     "--add-data", "res/endgame.wav:res",
     "--add-data", "res/end.wav:res",
+    "--add-data", "res/bell.wav:res",
+    "--add-data", "res/foghorn.wav:res",
 ])
