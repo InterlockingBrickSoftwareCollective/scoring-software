@@ -24,6 +24,7 @@ from PyQt6.QtGui import *
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import *
 
+import ResourceManager
 from CustomWidgets import CustomScroll
 
 sheet = """
@@ -47,13 +48,9 @@ QWidget #team_card{
 }
 """
 
-media = {
-    "bell": QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "bell.wav")),
-    "end": QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "end.wav")),
-    "endgame": QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "endgame.wav")),
-    "foghorn": QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "foghorn.wav")),
-    "start": QUrl.fromLocalFile(os.path.join(os.path.dirname(__file__), "res", "start.wav")),
-}
+def getMediaUrl(sound_name):
+    """Get the QUrl for a sound file from the resource pack."""
+    return QUrl.fromLocalFile(ResourceManager.getResourcePath(f"{sound_name}.wav"))
 
 INITIAL_TIME = 150
 
@@ -278,7 +275,7 @@ class TimerWidget(QWidget):
             self.main.timerComplete()
 
     def playSound(self, sound: str):
-        self.mediaPlayer.setSource(media[sound])
+        self.mediaPlayer.setSource(getMediaUrl(sound))
         self.mediaPlayer.setPosition(0)
         self.mediaPlayer.play()
 
@@ -367,6 +364,6 @@ class PracticeTimerWidget(QWidget):
             self.resetTimer()
 
     def playSound(self, sound: str):
-        self.mediaPlayer.setSource(media[sound])
+        self.mediaPlayer.setSource(getMediaUrl(sound))
         self.mediaPlayer.setPosition(0)
         self.mediaPlayer.play()
