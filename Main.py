@@ -607,8 +607,11 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # Add font from resource pack if available
     if ResourceManager.isResourcePackInstalled():
+        packVersion = ResourceManager.getResourcePackVersion()
+        print(f"Using resource pack version {packVersion if packVersion else 'unknown'}")
+
+        # Add font from resource pack if available
         fontId = QFontDatabase.addApplicationFont(ResourceManager.getResourcePath("Roboto-Regular.ttf"))
 
         if fontId != -1:

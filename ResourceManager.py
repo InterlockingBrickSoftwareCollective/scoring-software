@@ -17,6 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import json
 import os
 import platform
 import shutil
@@ -72,6 +73,23 @@ def isResourcePackInstalled() -> bool:
             return True
 
     return False
+
+def getResourcePackVersion() -> str | None:
+    """
+    Read and return the pack version from manifest.json.
+
+    Returns:
+        The pack version as a string, or None if manifest.json doesn't exist or is invalid
+    """
+    manifest_path = getResourcePath("manifest.json")
+
+    try:
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+            return manifest.get("packVersion")
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        return None
+
 
 def installResourcePack(zipPath: str):
     """
