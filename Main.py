@@ -19,13 +19,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import csv
 import math
-import os
 import sys
 
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
+import ResourceManager
 import Substrate
 from AddWindow import AddWindow
 from Audience import AudienceWindow
@@ -182,6 +182,9 @@ class MainWindow(QMainWindow):
 
             # Create Toybox menu and button
             self.toyboxMenu = QMenu("Toybox", self)
+            installResPack = QAction("Install resource pack")
+            installResPack.triggered.connect(self.installResPack)
+            self.toyboxMenu.addActions([installResPack])
             self.toyboxButton = QPushButton("Toybox")
             self.toyboxButton.setMenu(self.toyboxMenu)
             self.toyboxButton.setFixedWidth(100)
@@ -236,6 +239,40 @@ class MainWindow(QMainWindow):
 
             application.exec()
         except Exception as err:
+            print(err)
+
+    def installResPack(self):
+        """Install a resource pack from a ZIP file."""
+        try:
+            # Open file dialog filtered for ZIP files
+            dialog = QFileDialog()
+            filename, _ = dialog.getOpenFileName(
+                self,
+                "Select Resource Pack",
+                "",
+                "ZIP Files (*.zip)"
+            )
+
+            # User cancelled the dialog
+            if not filename:
+                return
+
+            ResourceManager.installResourcePack(filename)
+
+            # Show success message
+            QMessageBox.information(
+                self,
+                "Success",
+                "Resource pack installed!\nRestart application to complete installation."
+            )
+
+        except Exception as err:
+            # Show error message for any failure
+            QMessageBox.critical(
+                self,
+                "Installation Failed",
+                "Resource pack installation failed."
+            )
             print(err)
 
     def openCsvDialogWithScores(self):
@@ -570,12 +607,13 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    # Add font from local file
-    fontId = QFontDatabase.addApplicationFont(os.path.join(os.path.dirname(__file__), "res/Roboto-Regular.ttf"))
+    # Add font from resource pack if available
+    if ResourceManager.isResourcePackInstalled():
+        fontId = QFontDatabase.addApplicationFont(ResourceManager.getResourcePath("Roboto-Regular.ttf"))
 
-    if fontId != -1:
-        fontFamily = QFontDatabase.applicationFontFamilies(fontId)[0]
-        QApplication.setFont(QFont(fontFamily))
+        if fontId != -1:
+            fontFamily = QFontDatabase.applicationFontFamilies(fontId)[0]
+            QApplication.setFont(QFont(fontFamily))
 
     window = MainWindow(app)
     window.setStyleSheet(sheet)

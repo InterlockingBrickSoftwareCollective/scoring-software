@@ -30,10 +30,4 @@ PyInstaller.__main__.run([
     '-F', # single-file distribution
     '-w', # no console window
     '-i', 'icon.png',
-    "--add-data", "res/Roboto-Regular.ttf:res",
-    "--add-data", "res/start.wav:res",
-    "--add-data", "res/endgame.wav:res",
-    "--add-data", "res/end.wav:res",
-    "--add-data", "res/bell.wav:res",
-    "--add-data", "res/foghorn.wav:res",
 ])
