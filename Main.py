@@ -180,7 +180,12 @@ class MainWindow(QMainWindow):
             self.sortRank.pressed.connect(self.sortTeamsByRank)
             self.sortRank.setEnabled(False)
 
-            self.configLayout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+            # Create Toybox menu and button
+            self.toyboxMenu = QMenu("Toybox", self)
+            self.toyboxButton = QPushButton("Toybox")
+            self.toyboxButton.setMenu(self.toyboxMenu)
+            self.toyboxButton.setFixedWidth(100)
+
             self.configLayout.addWidget(self.matchNumLabel, 0, 0)
             self.configLayout.addWidget(self.matchNum, 0, 1)
             self.configLayout.addWidget(QLabel(" " * 6), 0, 2)
@@ -188,6 +193,9 @@ class MainWindow(QMainWindow):
             self.configLayout.addWidget(QLabel(" " * 6), 0, 4)
             self.configLayout.addWidget(self.sortNum, 0, 5)
             self.configLayout.addWidget(self.sortRank, 0, 6)
+            self.configLayout.setColumnStretch(7, 1)  # Add stretch to push Toybox to the right
+            self.configLayout.addWidget(self.toyboxButton, 0, 8)
+            self.configLayout.setContentsMargins(0, 0, 0, 0)
 
             self.configWidget = QWidget()
             self.configWidget.setLayout(self.configLayout)
@@ -206,7 +214,7 @@ class MainWindow(QMainWindow):
             self.scroll.setWidget(self.widget)
 
             self.mainLayout.addWidget(self.scroll, 1, 0, 1, 7)
-            self.mainLayout.addWidget(self.configWidget, 0, 0)
+            self.mainLayout.addWidget(self.configWidget, 0, 0, 1, 7)
             self.mainWidget.setLayout(self.mainLayout)
             self.setCentralWidget(self.mainWidget)
             self.setStyleSheet(sheet)
