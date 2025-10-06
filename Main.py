@@ -25,6 +25,7 @@ from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
+import About
 import ResourceManager
 import Substrate
 from AddWindow import AddWindow
@@ -184,7 +185,9 @@ class MainWindow(QMainWindow):
             self.toyboxMenu = QMenu("Toybox", self)
             installResPack = QAction("Install resource pack")
             installResPack.triggered.connect(self.installResPack)
-            self.toyboxMenu.addActions([installResPack])
+            aboutAction = QAction("About...")
+            aboutAction.triggered.connect(self.showAboutDialog)
+            self.toyboxMenu.addActions([aboutAction, installResPack])
             self.toyboxButton = QPushButton("Toybox")
             self.toyboxButton.setMenu(self.toyboxMenu)
             self.toyboxButton.setFixedWidth(100)
@@ -240,6 +243,9 @@ class MainWindow(QMainWindow):
             application.exec()
         except Exception as err:
             print(err)
+
+    def showAboutDialog(self):
+        About.show(self)
 
     def installResPack(self):
         """Install a resource pack from a ZIP file."""
@@ -606,6 +612,8 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    print(f"Interlocking Brick Scoring Software version {About.getVersion()}")
 
     if ResourceManager.isResourcePackInstalled():
         packVersion = ResourceManager.getResourcePackVersion()
