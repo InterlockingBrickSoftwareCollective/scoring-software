@@ -22,7 +22,7 @@ import sqlite3
 
 from dataclasses import dataclass
 from datetime import datetime
-
+from typing import Optional
 
 @dataclass
 class TeamEntry:
@@ -50,9 +50,14 @@ def init():
     """Initialize Substrate layer."""
     global _db, _cur
 
-    # By default, open a database with today's date, since we assume that
-    # multiple events won't be run on the same computer on the same day...
-    _db = sqlite3.connect(f"{datetime.now().strftime('%Y%m%d')}-event.db")
+    # Check if a precreated database has been populated
+    dbFilename = _findPrecreatedDb()
+    if dbFilename is None:
+        # If no precreated database is available, open a database with today's date,
+        # since we assume that multiple events won't be run on the same computer on the same day...
+        dbFilename = f"{datetime.now().strftime('%Y%m%d')}-event.db"
+
+    _db = sqlite3.connect(dbFilename)
     _cur = _db.cursor()
 
     # Check if database is empty (i.e., has no tables)
@@ -172,6 +177,38 @@ def writeLogEntry(tag: str, message: str):
     timestamp = datetime.now().timestamp()
     _cur.execute("INSERT INTO log VALUES (?, ?, ?)", (timestamp, tag, message))
     _db.commit()
+
+
+def _findPrecreatedDb() -> Optional[str]:
+    """Find the precreated event database closest to today's date that is not in the past."""
+    import os
+    import re
+
+    # Precreated databases follow the pattern of EVENTCODE-YYYYMMDD.db
+    pattern = re.compile(r"^([a-zA-Z][a-zA-Z0-9]+)-(\d{8})\.db")
+
+    today = datetime.today().date()
+    closestFile = None
+    closestDate = None
+
+    for filename in os.listdir(os.getcwd()):
+        match = pattern.match(filename)
+        if match:
+            # Extract the date string (second group)
+            date_str = match.group(2)
+            try:
+                fileDate = datetime.strptime(date_str, '%Y%m%d').date()
+                # Check if the file's date is not in the past
+                if fileDate >= today:
+                    # Find the closest date without being in the past
+                    if closestDate is None or fileDate < closestDate:
+                        closestDate = fileDate
+                        closestFile = filename
+            except ValueError:
+                # Skip files with invalid date formats
+                continue
+
+    return closestFile
 
 
 def _createTables():
