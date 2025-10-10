@@ -40,6 +40,9 @@ class Team:
     def __del__(self):
         Substrate.deleteTeam(self.number)
 
+    def __lt__(self, other):
+        return self.number < other.number
+
     def setScore(self, roundNum, score):
         try:
             self.scores[roundNum - 1] = score
