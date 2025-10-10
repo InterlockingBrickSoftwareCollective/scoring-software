@@ -364,6 +364,11 @@ class MainWindow(QMainWindow):
             print(err)
 
     def openInsertPane(self):
+        # Do nothing if no teams loaded yet
+        if len(self.teams) == 0:
+            QMessageBox.critical(self, "Error", "No teams loaded!")
+            return
+
         try:
             self.insertWindow = Insert(self)
         except Exception as err:
