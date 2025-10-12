@@ -126,8 +126,21 @@ class MainWindow(QMainWindow):
             self.manually.triggered.connect(self.openAddTeamWindow)
             self.addTeamsMenu.addActions([self.fromCsv, self.fromCsvScores, self.manually])
 
-            self.insert = QAction("Insert Scores")
+            self.insert = QAction("Add Score Manually")
             self.insert.triggered.connect(self.openInsertPane)
+
+            # Scoresheet functionality is optional and only available if both
+            # a resource pack is installed and the resource pack contains a
+            # scoresheet backend module.
+            self.scoresheet = None
+            try:
+                global Scoresheet
+                import Scoresheet
+                self.scoresheet = QAction("Add Scoresheet")
+                self.scoresheet.triggered.connect(self.openScoresheetPane)
+            except:
+                print(f"Scoresheet entry unavailable (missing backend)")
+
             self.export = QAction("Export Scores")
             self.export.triggered.connect(self.exportCsv)
 
@@ -148,7 +161,10 @@ class MainWindow(QMainWindow):
             self.timerCtl.triggered.connect(self.handleTimerCtl)
             self.timerCtl.setDisabled(True) # Audience display starts on rank display
 
-            self.menuBar().addActions([self.insert, self.export])
+            self.menuBar().addAction(self.insert)
+            if self.scoresheet:
+                self.menuBar().addAction(self.scoresheet)
+            self.menuBar().addAction(self.export)
             self.menuBar().addMenu(self.audienceMenu)
             self.menuBar().addActions([self.timerMode, self.timerCtl])
 
@@ -373,6 +389,17 @@ class MainWindow(QMainWindow):
             self.insertWindow = Insert(self)
         except Exception as err:
             print(err)
+
+    def openScoresheetPane(self):
+        # Do nothing if no teams loaded yet
+        if len(self.teams) == 0:
+            QMessageBox.critical(self, "Error", "No teams loaded!")
+        else:
+            try:
+                self.insertWindow = Scoresheet.ScoresheetDialog(self)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", "Problem using scoresheet entry!\nUse score calculator and add scores manually.")
+                self.scoresheet.setEnabled(False)
 
     def fetchTeam(self, number):
         try:

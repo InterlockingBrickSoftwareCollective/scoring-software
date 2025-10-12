@@ -43,10 +43,13 @@ class Team:
     def __lt__(self, other):
         return self.number < other.number
 
-    def setScore(self, roundNum, score):
+    def setScore(self, roundNum, score, scoresheet=None):
         try:
             self.scores[roundNum - 1] = score
             Substrate.saveScore(self.number, roundNum, score)
+
+            if scoresheet is not None:
+                Substrate.saveScoresheet(self.number, roundNum, scoresheet)
 
             # Continuously update high score, second highest, and third highest
             rankings = list(self.scores)
