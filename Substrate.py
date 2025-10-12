@@ -137,13 +137,33 @@ def saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
     writeAuditEntry("score_update", auditEntry)
 
 
+def saveScoresheet(teamnumber: int, round: int, scoresheet: str):
+    """Create or update a match scoresheet, writing an audit log entry to note the change."""
+    slug = f"{teamnumber}-{round}"
+    # Check if previous score exists
+    _cur.execute("SELECT scoresheet FROM scoresheets WHERE teamnumber = ? AND round = ?", (teamnumber, round))
+    maybe_old_scoresheet = _cur.fetchall()
+    old_scoresheet = None if len(maybe_old_scoresheet) == 0 else maybe_old_scoresheet[0][0]
+
+    # Allow updating existing scoresheets by using INSERT OR REPLACE INTO
+    _cur.execute("INSERT OR REPLACE INTO scoresheets VALUES (?, ?, ?, ?)",
+                 (slug, teamnumber, round, scoresheet))
+
+    auditEntry = {
+        "teamnumber": teamnumber,
+        "round": round,
+        "old_score": old_scoresheet,
+        "new_score": scoresheet
+    }
+    writeAuditEntry("scoresheet_update", auditEntry)
+
 def deleteTeam(teamnumber: int):
     """Delete a team, including its associated scores."""
     # Delete the team
     writeAuditEntry("team_delete", {"teamnumber": teamnumber})
     _cur.execute("DELETE FROM teams WHERE teamnumber = ?", (teamnumber,))
 
-    # Find all associated scores, audit log the deletion, then perform the deletion
+    # Find all associated scores, scoresheets, audit log the deletion, then perform the deletion
     _cur.execute("SELECT slug, round, score FROM scores WHERE teamnumber = ?", (teamnumber,))
     maybe_delete_scores = _cur.fetchall()
     for score_entry in maybe_delete_scores:
@@ -155,6 +175,18 @@ def deleteTeam(teamnumber: int):
         }
         writeAuditEntry("score_delete", audit_entry)
         _cur.execute("DELETE FROM scores WHERE slug = ?", (score_entry[0],))
+
+    _cur.execute("SELECT slug, round, scoresheet FROM scoresheets WHERE teamnumber = ?", (teamnumber,))
+    maybe_delete_scoresheets = _cur.fetchall()
+    for entry in maybe_delete_scoresheets:
+        audit_entry = {
+            "teamnumber": teamnumber,
+            "round": entry[1],
+            "old_scoresheet": entry[2],
+            "new_scoresheet": None
+        }
+        writeAuditEntry("score_delete", audit_entry)
+        _cur.execute("DELETE FROM scoresheets WHERE slug = ?", (entry[0],))
 
     _db.commit()
 
@@ -215,10 +247,12 @@ def _createTables():
     """Internal method to create tables for a freshly-initialized database."""
     _cur.executescript("""
                        PRAGMA application_id = 0;
-                       PRAGMA user_version = 1;
+                       PRAGMA user_version = 3;
                        CREATE TABLE teams(teamnumber type UNIQUE, name, pit);
                        CREATE TABLE scores(slug type UNIQUE, teamnumber, round, score, comments);
                        CREATE TABLE audit(timestamp, tag, data);
                        CREATE TABLE log(timestamp, tag, message);
+                       CREATE TABLE scoresheets(slug type UNIQUE, teamnumber, round, scoresheet);
+                       CREATE TABLE meta(key type UNIQUE, value);
                        """)
     _db.commit()
