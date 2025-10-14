@@ -396,7 +396,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", "No teams loaded!")
         else:
             try:
-                self.insertWindow = Scoresheet.ScoresheetDialog(self)
+                if self.insertWindow is None or not self.insertWindow.isVisible():
+                    self.insertWindow = Scoresheet.ScoresheetDialog(self)
             except Exception as e:
                 QMessageBox.critical(self, "Error", "Problem using scoresheet entry!\nUse score calculator and add scores manually.")
                 self.scoresheet.setEnabled(False)
