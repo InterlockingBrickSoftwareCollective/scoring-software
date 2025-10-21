@@ -64,12 +64,13 @@ class ScoresheetDialog(QMainWindow):
         metadataPath = ResourceManager.getResourcePath("scoresheet.xml")
         self.game = ET.parse(metadataPath).getroot()
         self.tasks = {}
-        self.score = None
 
         # Perform connectivity check
         if not self.connectivity_check():
             QMessageBox.critical(
-                self, "Connectivity Error", "Scoresheet connectivity check failed!\nCheck your Internet connection and try again,\nor use score calculator and add scores manually."
+                self,
+                "Connectivity Error",
+                "Scoresheet connectivity check failed!\nCheck your Internet connection and try again,\nor use score calculator and add scores manually.",
             )
             self.close()
             return
@@ -91,10 +92,10 @@ class ScoresheetDialog(QMainWindow):
         self.widget = QWidget()
         self.widget.setStyleSheet(sheet)
 
-        # Parent layout, holds top bar and submit button
+        # Parent layout, holds top bar and scoresheet image
         layout = QVBoxLayout(self.widget)
 
-        # Top bar: Team and match selection, score display, Calculate/Submit button
+        # Top bar: Team and match selection, score display, Calculate button
         topbar_layout = QHBoxLayout()
 
         # Team selection
@@ -115,13 +116,13 @@ class ScoresheetDialog(QMainWindow):
         # Score label
         self.score_label = QLabel(self.widget)
         self.score_label.setFixedWidth(150)
-        self.score_label.setText("Score: uncalculated")
+        self.score_label.setText("")
         topbar_layout.addWidget(self.score_label)
 
-        # Calculate/Submit button (stretch to fill remaining space)
-        self.calc_submit_button = QPushButton("Calculate", self)
-        self.calc_submit_button.clicked.connect(self.on_calc_submit)
-        topbar_layout.addWidget(self.calc_submit_button, 1)  # stretch factor of 1
+        # Calculate Score button (stretch to fill remaining space)
+        calc_button = QPushButton("Calculate Score", self)
+        calc_button.clicked.connect(self.on_calculate)
+        topbar_layout.addWidget(calc_button, 1)
 
         # Label to display the image
         self.pixmap_label = QLabel(self.widget)
@@ -228,11 +229,6 @@ class ScoresheetDialog(QMainWindow):
                     # Set all siblings to "unclicked"
                     for sibling in filter(lambda x: x is not option, task):
                         sibling.attrib["clicked"] = False
-
-                    # Reset score, in case someone hit Calculate and then edited
-                    if self.score is not None:
-                        self.score = None
-                        self.calc_submit_button.setText("Calculate")
 
                     # Repaint
                     self.update_image()
@@ -366,18 +362,15 @@ class ScoresheetDialog(QMainWindow):
 
         self.match_dropdown.setEnabled(True)
 
-    def on_calc_submit(self):
-        """Handle clicks on the combined Calculate/Submit button."""
-        if self.score is None:
-            self.calculate()
-            # After calculation, should have a score, otherwise something failed
-            if self.score is not None:
-                self.calc_submit_button.setText("Submit")
-        else:
-            self.submit()
+    def on_calculate(self):
+        """
+        Calculate the score represented by the current state of the scoresheet,
+        present a question to submit it, and if confirmed, submit the score.
+        """
+        if self.team_dropdown.currentData() is None:
+            QMessageBox.critical(self, "Error", "No team selected!")
+            return
 
-    def calculate(self):
-        """Calculate the score represented by the current state of the scoresheet."""
         self.tasks = {}
         for mission in filter(lambda x: x.tag == "mission", self.game.iter()):
             for task in mission:
@@ -398,24 +391,23 @@ class ScoresheetDialog(QMainWindow):
                 self.tasks[json_key] = json_value
 
         try:
-            self.score = ScoresheetBackend.get_score(self.tasks)
-            QMessageBox.information(self, "Score", f"Calculated score is {self.score}")
-            self.score_label.setText(f"Score: {self.score}")
+            score = ScoresheetBackend.get_score(self.tasks)
         except:
             QMessageBox.critical(
-                self, "Error", "Could not contact ScoresheetBackend for score!"
+                self, "Error", "Could not calculate score! Check network connectivity."
             )
+            return
 
-    def submit(self):
-        """Submit a calculated scoresheet."""
-        if self.score is None:
-            QMessageBox.critical(self, "Error", "Score has not yet been calculated!")
-        elif self.team_dropdown.currentData() is None:
-            QMessageBox.critical(self, "Error", "No team selected!")
-        else:
+        confirm = QMessageBox.question(
+            self,
+            "Confirm Score",
+            f"Calculated score is <b>{score}</b>. Submit this score?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
             team_num = self.team_dropdown.currentData()
             match_num = self.match_dropdown.currentData()
-
             team = self.parent.fetchTeam(team_num)
 
             if team.scores[match_num - 1] != -1:
@@ -429,11 +421,13 @@ class ScoresheetDialog(QMainWindow):
                 if confirm == QMessageBox.StandardButton.No:
                     return
 
-            print(f"Storing team {team_num} match {match_num} score {self.score}")
-            team.setScore(match_num, self.score, str(self.tasks))
+            print(f"Storing team {team_num} match {match_num} score {score}")
+            team.setScore(match_num, score, str(self.tasks))
 
             self.parent.rerank()
             self.reset()
+        else:
+            self.score_label.setText(f"Score: {score}")
 
     def reset(self):
         """Reset scoresheet to initial state"""
@@ -442,11 +436,9 @@ class ScoresheetDialog(QMainWindow):
             option.attrib["clicked"] = False
 
         self.update_image()
-        self.score = None
         self.tasks = {}
         self.team_dropdown.setCurrentIndex(0)
         self.match_dropdown.setCurrentIndex(0)
         self.match_dropdown.setEnabled(False)
-        self.score_label.setText("Score: uncalculated")
-        self.calc_submit_button.setText("Calculate")
+        self.score_label.setText("")
         self.time_elapsed = 0
