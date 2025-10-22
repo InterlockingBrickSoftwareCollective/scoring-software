@@ -24,6 +24,9 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
+import About
+import ResourceManager
+
 @dataclass
 class TeamEntry:
     name: str
@@ -66,9 +69,9 @@ def init():
 
     if len(tables) == 0:
         _createTables()
-        writeAuditEntry("db_created", {})
+        writeAuditEntry("db_created", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
     else:
-        writeAuditEntry("db_opened", {})
+        writeAuditEntry("db_opened", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
 
 
 def deinit():
