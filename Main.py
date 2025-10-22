@@ -246,7 +246,7 @@ class MainWindow(QMainWindow):
 
             for score in Substrate.loadScores():
                 team = self.fetchTeam(score.teamnumber)
-                team.setScore(score.round, score.score)
+                team.setScore(score.round, score.score, from_db=True)
 
             self.rerank()
             self.show()

@@ -43,10 +43,11 @@ class Team:
     def __lt__(self, other):
         return self.number < other.number
 
-    def setScore(self, roundNum, score, scoresheet=None):
+    def setScore(self, roundNum, score, scoresheet=None, from_db=False):
         try:
             self.scores[roundNum - 1] = score
-            Substrate.saveScore(self.number, roundNum, score)
+            if not from_db:
+                Substrate.saveScore(self.number, roundNum, score)
 
             if scoresheet is not None:
                 Substrate.saveScoresheet(self.number, roundNum, scoresheet)
