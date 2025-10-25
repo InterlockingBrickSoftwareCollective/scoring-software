@@ -1,8 +1,0 @@
-# Newer versions of PyQt6 break sound on Windows
-# See: https://stackoverflow.com/a/78582768
-PyQt6==6.6.1
-PyQt6-Qt6==6.6.1
-PyQt6-sip==13.6.0
-
-# Don't care about versions of these
-requests

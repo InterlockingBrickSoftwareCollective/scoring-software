@@ -1,0 +1,23 @@
+[project]
+name = "scoring-software"
+description = "Scoring software for robotics competitions"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pyqt6==6.6.1",
+    "pyqt6-qt6==6.6.1",
+    "pyqt6-sip==13.6.0",
+    "requests>=2.32.5",
+]
+
+# Not the real version, but no way to populate from git
+version = "0.0.1"
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pillow",
+    "pyinstaller",
+]
