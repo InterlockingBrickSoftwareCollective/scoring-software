@@ -46,5 +46,5 @@ PyInstaller.__main__.run([
     '-F', # single-file distribution
     '-w', # no console window
     '-i', 'icon.png',
-    '--add-data', 'icon.png:/',
+    '--add-data', 'icon.png:.',
 ])
