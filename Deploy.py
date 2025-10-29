@@ -47,4 +47,5 @@ PyInstaller.__main__.run([
     '-w', # no console window
     '-i', 'icon.png',
     '--add-data', 'icon.png:.',
+    '--hidden-import', 'requests',
 ])
