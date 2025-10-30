@@ -52,12 +52,19 @@ sheet = """
 QComboBox {
     font-size: 16px;
 }
+
+QPushButton {
+    background-color: #000000;
+    color: white;
+    border-radius: 4px;
+    padding: 6px;
+}
 """
 
 
 class ScoresheetDialog(QMainWindow):
     def __init__(self, parent):
-        super().__init__(parent)
+        super().__init__()
         self.parent = parent
 
         # Load game metadata
