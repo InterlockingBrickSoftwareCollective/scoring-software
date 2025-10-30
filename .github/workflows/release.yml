@@ -35,6 +35,9 @@ jobs:
       run: |
         cd dist
         for file in *; do
+          if [[ "$file" == *.app ]]; then
+            continue
+          fi
           if [[ "$file" == *.* ]]; then
             ext="${file##*.}"
             mv "$file" "ibss-${{ matrix.platform }}.${ext}"
@@ -47,7 +50,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ibss-${{ matrix.platform }}
-        path: dist/*
+        path: dist/ibss-*
 
   release:
     needs: build
