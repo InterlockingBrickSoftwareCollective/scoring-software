@@ -275,9 +275,10 @@ class TimerWidget(QWidget):
             self.main.timerComplete()
 
     def playSound(self, sound: str):
-        self.mediaPlayer.setSource(getMediaUrl(sound))
-        self.mediaPlayer.setPosition(0)
-        self.mediaPlayer.play()
+        if ResourceManager.isResourcePackInstalled():
+            self.mediaPlayer.setSource(getMediaUrl(sound))
+            self.mediaPlayer.setPosition(0)
+            self.mediaPlayer.play()
 
 class PracticeTimerWidget(QWidget):
     def __init__(self, main):
@@ -364,6 +365,7 @@ class PracticeTimerWidget(QWidget):
             self.resetTimer()
 
     def playSound(self, sound: str):
-        self.mediaPlayer.setSource(getMediaUrl(sound))
-        self.mediaPlayer.setPosition(0)
-        self.mediaPlayer.play()
+        if ResourceManager.isResourcePackInstalled():
+            self.mediaPlayer.setSource(getMediaUrl(sound))
+            self.mediaPlayer.setPosition(0)
+            self.mediaPlayer.play()
