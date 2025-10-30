@@ -648,16 +648,21 @@ if __name__ == "__main__":
 
     print(f"Interlocking Brick Scoring Software version {About.getVersion()}")
 
-    if ResourceManager.isResourcePackInstalled():
+    try:
+        ResourceManager.initializeResources()
+
         packVersion = ResourceManager.getResourcePackVersion()
         print(f"Using resource pack version {packVersion if packVersion else 'unknown'}")
 
         # Add font from resource pack if available
         fontId = QFontDatabase.addApplicationFont(ResourceManager.getResourcePath("Roboto-Regular.ttf"))
-
         if fontId != -1:
             fontFamily = QFontDatabase.applicationFontFamilies(fontId)[0]
             QApplication.setFont(QFont(fontFamily))
+    except FileNotFoundError:
+        print("No resource pack installed")
+    except Exception as e:
+        print(f"Failed to load resource pack: {e}")
 
     window = MainWindow(app)
     window.setStyleSheet(sheet)
