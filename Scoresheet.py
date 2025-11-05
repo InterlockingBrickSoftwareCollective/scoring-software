@@ -94,6 +94,18 @@ class ScoresheetDialog(QMainWindow):
                 element.attrib["rect"] = QRect(x, y, w, h)
                 element.attrib["clicked"] = False
 
+        # Build ordered list of tasks for keyboard navigation
+        self.ordered_tasks = []
+        for mission in filter(lambda x: x.tag == "mission", self.game.iter()):
+            for task in mission:
+                self.ordered_tasks.append(task)
+
+        # Track current task index for keyboard input
+        self.current_task_index = 0
+
+        # Set up keyboard event filter flag (starts disabled, enabled by pressing Enter)
+        self.keyboard_mode_enabled = False
+
         # Window setup
         self.setWindowTitle("Scoresheet Entry")
         self.widget = QWidget()
@@ -170,6 +182,11 @@ class ScoresheetDialog(QMainWindow):
         self.widget.setLayout(layout)
         self.setCentralWidget(self.widget)
 
+        # Install event filter on widgets to intercept keyboard events
+        self.team_dropdown.installEventFilter(self)
+        self.match_dropdown.installEventFilter(self)
+        calc_button.installEventFilter(self)
+
         # Move a little bit off the parent window
         self.show()
         self.move(self.parent.geometry().x() + 50, self.parent.geometry().y() + 50)
@@ -240,6 +257,109 @@ class ScoresheetDialog(QMainWindow):
                     # Repaint
                     self.update_image()
                     break
+
+    def keyPressEvent(self, event):
+        """
+        Qt handler for keyboard events.
+        Numeric keys (0-9) select options in the current task.
+        + key calls calculate.
+        """
+        key = event.key()
+
+        # Handle + key to calculate
+        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+            self.on_calculate()
+            return
+
+        # Handle numeric keys 0-9
+        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+            # Convert key to index
+            digit = key - Qt.Key.Key_0
+
+            # Check if we're within bounds of task list
+            if self.current_task_index >= len(self.ordered_tasks):
+                return  # Already processed all tasks
+
+            current_task = self.ordered_tasks[self.current_task_index]
+            options = list(current_task)
+
+            # For tasks with 2 options (false/true), map 0→false, 1→true
+            if len(options) == 2:
+                # Find which option has value="false" and which has value="true"
+                false_idx = None
+                true_idx = None
+                for idx, opt in enumerate(options):
+                    if opt.attrib["value"] == "false":
+                        false_idx = idx
+                    elif opt.attrib["value"] == "true":
+                        true_idx = idx
+
+                if digit == 0 and false_idx is not None:
+                    self.select_option_by_index(current_task, false_idx)
+                elif digit == 1 and true_idx is not None:
+                    self.select_option_by_index(current_task, true_idx)
+            else:
+                # For tasks with multiple numeric options, select by index
+                # Find the option with value matching the digit
+                for idx, opt in enumerate(options):
+                    if opt.attrib["value"] == str(digit):
+                        self.select_option_by_index(current_task, idx)
+                        break
+
+            return
+
+        # Pass other keys to parent handler
+        super().keyPressEvent(event)
+
+    def eventFilter(self, obj, event):
+        """
+        Event filter to intercept keyboard events before they reach child widgets.
+        This allows numeric keys and + to be used for scoresheet entry even when
+        combo boxes or buttons have focus.
+        """
+        if event.type() == event.Type.KeyPress:
+            key = event.key()
+
+            if self.keyboard_mode_enabled:
+                # When keyboard mode is enabled, intercept numeric keys and Enter key
+                if (Qt.Key.Key_0 <= key <= Qt.Key.Key_9) or key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+                    # Process the event ourselves
+                    self.keyPressEvent(event)
+                    return True  # Event handled, don't pass to widget
+            else:
+                # When not in keyboard mode, Enter key enables keyboard mode
+                if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
+                    self.keyboard_mode_enabled = True
+                    self.update_image()  # Redraw to show current task indicator line
+                    return True  # Event handled, don't pass to widget
+
+        # Pass all other events to the widget
+        return super().eventFilter(obj, event)
+
+    def select_option_by_index(self, task, option_index):
+        """
+        Select an option in a task by its index.
+        Used for keyboard input.
+        """
+        options = list(task)
+        if option_index < 0 or option_index >= len(options):
+            return  # Invalid index, do nothing
+
+        selected_option = options[option_index]
+
+        # Set the selected option as clicked
+        selected_option.attrib["clicked"] = True
+
+        # Unclick all siblings
+        for sibling in filter(lambda x: x is not selected_option, task):
+            sibling.attrib["clicked"] = False
+
+        # Advance to next task BEFORE repainting
+        # This ensures the indicator line moves to the next task
+        self.current_task_index += 1
+
+        # Repaint (line will now appear at the new current_task_index)
+        self.update_image()
 
     def resizeEvent(self, event):
         """
@@ -340,6 +460,29 @@ class ScoresheetDialog(QMainWindow):
                 int(original_rect.height() * self.scale_factor),
             )
             painter.drawRect(scaled_rect)
+
+        # Draw current task indicator line (if keyboard mode is enabled)
+        if self.keyboard_mode_enabled and self.current_task_index < len(self.ordered_tasks):
+            current_task = self.ordered_tasks[self.current_task_index]
+
+            # Check if task has x, y, width attributes (backwards compatibility)
+            if "x" in current_task.attrib and "y" in current_task.attrib and "width" in current_task.attrib:
+                # Get task line coordinates
+                task_x = int(current_task.attrib["x"])
+                task_y = int(current_task.attrib["y"])
+                task_width = int(current_task.attrib["width"])
+
+                # Scale coordinates
+                scaled_x = int(task_x * self.scale_factor)
+                scaled_y = int(task_y * self.scale_factor)
+                scaled_width = int(task_width * self.scale_factor)
+
+                # Draw red line for current task
+                pen.setColor(Qt.GlobalColor.red)
+                pen.setWidth(max(2, int(4 * self.scale_factor)))  # Slightly thinner than option rectangles
+                painter.setPen(pen)
+                painter.drawLine(scaled_x, scaled_y, scaled_x + scaled_width, scaled_y)
+
         painter.end()
 
         # Set the updated pixmap back to the QLabel
@@ -449,3 +592,5 @@ class ScoresheetDialog(QMainWindow):
         self.match_dropdown.setEnabled(False)
         self.score_label.setText("")
         self.time_elapsed = 0
+        self.current_task_index = 0
+        self.keyboard_mode_enabled = False
