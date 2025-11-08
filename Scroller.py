@@ -29,11 +29,25 @@ class Scroller(QRunnable):
         super().__init__()
         self.scroll = scroll
         self.go = True
+        self.paused = False
+
+    def pause(self):
+        """Pause auto-scrolling (for timer displays)"""
+        self.paused = True
+
+    def resume(self):
+        """Resume auto-scrolling (for rankings display)"""
+        self.paused = False
 
     @pyqtSlot()
     def run(self):
         while self.go:
             time.sleep(1 / 60)
+
+            # Skip scrolling if paused
+            if self.paused:
+                continue
+
             val = self.scroll.verticalScrollBar().value() + self.inc
 
             if val > self.scroll.verticalScrollBar().maximum():

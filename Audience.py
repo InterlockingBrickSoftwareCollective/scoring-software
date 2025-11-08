@@ -100,6 +100,9 @@ class AudienceWindow(QMainWindow):
             self.setCentralWidget(self.mainWidget)
             self.setStyleSheet(sheet)
 
+            # Set initial scroller state based on mode
+            self.updateScrollerState()
+
         except Exception as err:
             print(err)
 
@@ -172,6 +175,7 @@ class AudienceWindow(QMainWindow):
         self.timer.resetTimer()
         self.clearTeamWidgets()
         self.loadWidgets()
+        self.updateScrollerState()
 
     def rerank(self):
         self.clearTeamWidgets()
@@ -179,6 +183,17 @@ class AudienceWindow(QMainWindow):
 
     def scrollToTop(self):
         self.scroll.verticalScrollBar().setValue(0)
+
+    def updateScrollerState(self):
+        """Control auto-scrolling based on display mode"""
+        if self.mode in ("match_timer", "practice_timer"):
+            # Pause scrolling for timer displays
+            self.scroll.scroll.pause()
+            # Reset scroll position to top
+            self.scroll.verticalScrollBar().setValue(0)
+        else:
+            # Resume scrolling for rankings display
+            self.scroll.scroll.resume()
 
     def testSound(self):
         self.timer.playSound("start")
@@ -189,6 +204,7 @@ class AudienceWindow(QMainWindow):
         self.practice.warningTime = warning_time
         self.clearTeamWidgets()
         self.loadWidgets()
+        self.updateScrollerState()
         self.practice.startTimer()
 
     def stopPracticeTimer(self):
