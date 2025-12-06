@@ -213,6 +213,18 @@ def writeLogEntry(tag: str, message: str):
     _cur.execute("INSERT INTO log VALUES (?, ?, ?)", (timestamp, tag, message))
     _db.commit()
 
+def retrieveMatchStartTimes():
+    # Query for all match_start entries, getting the latest timestamp for each match
+    _cur.execute('''
+        SELECT message, MAX(timestamp) as latest_timestamp
+        FROM log
+        WHERE tag = 'match_start'
+        GROUP BY message
+        ORDER BY CAST(message AS INTEGER)
+    ''')
+
+    return _cur.fetchall()
+
 
 def _findPrecreatedDb() -> Optional[str]:
     """Find the precreated event database closest to today's date that is not in the past."""

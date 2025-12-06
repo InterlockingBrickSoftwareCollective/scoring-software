@@ -26,6 +26,7 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
 import About
+import CycleTimeReport
 import ResourceManager
 import Substrate
 from AddWindow import AddWindow
@@ -201,9 +202,11 @@ class MainWindow(QMainWindow):
             self.toyboxMenu = QMenu("Toybox", self)
             installResPack = QAction("Install resource pack")
             installResPack.triggered.connect(self.installResPack)
+            cycleTimeAction = QAction("Cycle time report")
+            cycleTimeAction.triggered.connect(self.showCycleTimeReport)
             aboutAction = QAction("About...")
             aboutAction.triggered.connect(self.showAboutDialog)
-            self.toyboxMenu.addActions([aboutAction, installResPack])
+            self.toyboxMenu.addActions([aboutAction, cycleTimeAction, installResPack])
             self.toyboxButton = QPushButton("Toybox")
             self.toyboxButton.setMenu(self.toyboxMenu)
             self.toyboxButton.setFixedWidth(100)
@@ -262,6 +265,9 @@ class MainWindow(QMainWindow):
 
     def showAboutDialog(self):
         About.show(self)
+
+    def showCycleTimeReport(self):
+        CycleTimeReport.show(self)
 
     def installResPack(self):
         """Install a resource pack from a ZIP file."""
