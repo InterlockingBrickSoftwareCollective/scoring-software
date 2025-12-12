@@ -57,14 +57,13 @@ INITIAL_TIME = 150
 
 class AudienceWindow(QMainWindow):
     def __init__(self, parent):
+        super().__init__()
+
         self.dlg = None
         self.parent = parent
         self.mode = "ranks"
-        self.timer = TimerWidget(parent)
-        self.practice = PracticeTimerWidget(parent)
 
         try:
-            super().__init__()
             self.setWindowTitle("Audience Display")
 
             # Block off window controls
@@ -80,6 +79,11 @@ class AudienceWindow(QMainWindow):
             self.vbox = QVBoxLayout()
             self.vbox.addStretch()
             self.widget.setLayout(self.vbox)
+
+            # Create timer widgets after vbox initialization
+            self.timer = TimerWidget(parent, self)
+            self.practice = PracticeTimerWidget(parent, self)
+
             self.loadWidgets()
 
             # Scroll Area Properties
@@ -212,10 +216,11 @@ class AudienceWindow(QMainWindow):
 
 
 class TimerWidget(QWidget):
-    def __init__(self, main):
+    def __init__(self, main, audience_window):
         super().__init__()
 
         self.main = main
+        self.audience_window = audience_window
 
         self.remainingTime = INITIAL_TIME
         self.timerRunning = False
@@ -228,9 +233,6 @@ class TimerWidget(QWidget):
         self.timerLayout = QVBoxLayout(self)
         self.timerLabel = QLabel(self)
 
-        # Make text very large
-        screen = QGuiApplication.primaryScreen().geometry()
-        self.timerLabel.setStyleSheet(f"font-size: {int(screen.height() * 0.75)}px; padding: -20px;")
         self.timerLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.timerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.timerLayout.addWidget(self.timerLabel)
@@ -238,9 +240,23 @@ class TimerWidget(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.updateTimer)
 
-        # Initial update of the timer label
+        # Initial update of the timer label and font size
+        self.updateFontSize()
         self.paintTimer()
         self.setLayout(self.timerLayout)
+
+    def updateFontSize(self):
+        """Update font size based on audience window height"""
+        windowHeight = self.audience_window.height()
+        if windowHeight > 0:
+            fontSize = int(windowHeight * 0.75)
+            print(f"Height: {windowHeight}, timer font size: {fontSize}px ")
+            self.timerLabel.setStyleSheet(f"font-size: {fontSize}px; padding: -20px;")
+
+    def resizeEvent(self, event):
+        """Recalculate font size when widget is resized"""
+        super().resizeEvent(event)
+        self.updateFontSize()
 
     def paintTimer(self):
         # Convert remaining time to mm:ss format
@@ -297,10 +313,11 @@ class TimerWidget(QWidget):
             self.mediaPlayer.play()
 
 class PracticeTimerWidget(QWidget):
-    def __init__(self, main):
+    def __init__(self, main, audience_window):
         super().__init__()
 
         self.main = main
+        self.audience_window = audience_window
 
         self.practiceTime = 0
         self.remainingTime = 0
@@ -312,20 +329,15 @@ class PracticeTimerWidget(QWidget):
         self.mediaPlayer = QMediaPlayer()
         self.mediaPlayer.setAudioOutput(self.audioOutput)
 
-        screen = QGuiApplication.primaryScreen().geometry()
-
         self.timerLayout = QVBoxLayout(self)
 
-        practiceLabel = QLabel("PRACTICE SESSION")
-        practiceLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        practiceLabel.setStyleSheet(f"background-color: #F74349; color: #ffffff; font-size: {int(screen.height() * 0.08)}px;")
-        practiceLabel.setFixedHeight(int(screen.height() * 0.10))
-        practiceLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.timerLayout.addWidget(practiceLabel)
+        self.practiceLabel = QLabel("PRACTICE SESSION")
+        self.practiceLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.practiceLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.timerLayout.addWidget(self.practiceLabel)
 
         # Make text very large
         self.timerLabel = QLabel(self)
-        self.timerLabel.setStyleSheet(f"font-size: {int(screen.height() * 0.60)}px; padding: -20px;")
         self.timerLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.timerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.timerLayout.addWidget(self.timerLabel)
@@ -333,9 +345,29 @@ class PracticeTimerWidget(QWidget):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.updateTimer)
 
-        # Initial update of the timer label
+        # Initial update of the timer label and font sizes
+        self.updateFontSize()
         self.paintTimer()
         self.setLayout(self.timerLayout)
+
+    def updateFontSize(self):
+        """Update font sizes based on audience window height"""
+        windowHeight = self.audience_window.height()
+        if windowHeight > 0:
+            # Practice label takes 10% of height
+            labelHeight = int(windowHeight * 0.10)
+            labelFontSize = int(windowHeight * 0.08)
+            self.practiceLabel.setFixedHeight(labelHeight)
+            self.practiceLabel.setStyleSheet(f"background-color: #F74349; color: #ffffff; font-size: {labelFontSize}px;")
+
+            # Timer takes remaining space, font is 60% of total height
+            timerFontSize = int(windowHeight * 0.60)
+            self.timerLabel.setStyleSheet(f"font-size: {timerFontSize}px; padding: -20px;")
+
+    def resizeEvent(self, event):
+        """Recalculate font sizes when widget is resized"""
+        super().resizeEvent(event)
+        self.updateFontSize()
 
     def paintTimer(self):
         # Convert remaining time to mm:ss format
