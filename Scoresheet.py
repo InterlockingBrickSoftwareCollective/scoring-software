@@ -189,6 +189,8 @@ class ScoresheetDialog(QMainWindow):
 
         # Move a little bit off the parent window
         self.show()
+        self.raise_()
+        self.activateWindow()
         self.move(self.parent.geometry().x() + 50, self.parent.geometry().y() + 50)
 
         # # Set initial window size to 95% of smallest screen dimension
@@ -407,6 +409,8 @@ class ScoresheetDialog(QMainWindow):
         msg.setWindowTitle("Connectivity Check")
         msg.setText("Checking scoresheet connectivity...")
         msg.setStandardButtons(QMessageBox.StandardButton.NoButton)
+        # Native macOS alerts always have a button and can't be dismissed programmatically
+        msg.setOption(QMessageBox.Option.DontUseNativeDialog)
         msg.setModal(True)
         msg.show()
         QApplication.processEvents()  # Force the dialog to appear immediately
@@ -420,8 +424,11 @@ class ScoresheetDialog(QMainWindow):
             # Any exception is a failed connectivity check
             pass
 
-        # Ensure the dialog is properly cleaned up
-        msg.close()
+        # Ensure the dialog is properly cleaned up. Use hide() rather than close():
+        # QMessageBox ignores close() when it has no escape button, which left the
+        # dialog up until deleteLater() ran after the scoresheet was shown, and
+        # macOS then re-activated the main window over the scoresheet.
+        msg.hide()
         msg.deleteLater()
 
         return result
