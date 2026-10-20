@@ -263,18 +263,25 @@ class ScoresheetDialog(QMainWindow):
     def keyPressEvent(self, event):
         """
         Qt handler for keyboard events.
-        Numeric keys (0-9) select options in the current task.
-        + key calls calculate.
+        Enter enables keyboard mode, or calculates if already enabled.
+        Numeric keys (0-9) select options in the current task when in keyboard mode.
+
+        Also reached directly (not via eventFilter) when no child widget has
+        focus, e.g. on macOS where combo boxes and buttons don't take focus.
         """
         key = event.key()
 
-        # Handle + key to calculate
+        # Handle Enter key: first press enables keyboard mode, subsequent presses calculate
         if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            self.on_calculate()
+            if not self.keyboard_mode_enabled:
+                self.keyboard_mode_enabled = True
+                self.update_image()  # Redraw to show current task indicator line
+            else:
+                self.on_calculate()
             return
 
         # Handle numeric keys 0-9
-        if Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+        if self.keyboard_mode_enabled and Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
             # Convert key to index
             digit = key - Qt.Key.Key_0
 
@@ -321,19 +328,13 @@ class ScoresheetDialog(QMainWindow):
         """
         if event.type() == event.Type.KeyPress:
             key = event.key()
+            is_enter = key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter
+            is_digit = Qt.Key.Key_0 <= key <= Qt.Key.Key_9
 
-            if self.keyboard_mode_enabled:
-                # When keyboard mode is enabled, intercept numeric keys and Enter key
-                if (Qt.Key.Key_0 <= key <= Qt.Key.Key_9) or key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-                    # Process the event ourselves
-                    self.keyPressEvent(event)
-                    return True  # Event handled, don't pass to widget
-            else:
-                # When not in keyboard mode, Enter key enables keyboard mode
-                if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-                    self.keyboard_mode_enabled = True
-                    self.update_image()  # Redraw to show current task indicator line
-                    return True  # Event handled, don't pass to widget
+            # Always intercept Enter; intercept numeric keys only in keyboard mode
+            if is_enter or (self.keyboard_mode_enabled and is_digit):
+                self.keyPressEvent(event)
+                return True  # Event handled, don't pass to widget
 
         # Pass all other events to the widget
         return super().eventFilter(obj, event)
