@@ -651,6 +651,11 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
+    # Qt 6.7+ defaults to the "windows11" style on Windows 11, which doesn't respect the stylesheets'
+    # menu bar font sizes and draws spin box buttons over the text, so use the previous default style
+    if app.style().name() == "windows11":
+        app.setStyle("windowsvista")
+
     print(f"Interlocking Brick Scoring Software version {About.getVersion()}")
 
     try:

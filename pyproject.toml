@@ -4,9 +4,9 @@ description = "Scoring software for robotics competitions"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pyqt6==6.6.1",
-    "pyqt6-qt6==6.6.1",
-    "pyqt6-sip==13.6.0",
+    "pyqt6==6.11.0",
+    "pyqt6-qt6==6.11.2",
+    "pyqt6-sip==13.13.0",
     "requests>=2.32.5",
 ]
 
