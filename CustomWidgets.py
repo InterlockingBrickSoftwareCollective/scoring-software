@@ -27,9 +27,8 @@ class CustomScroll(QScrollArea):
     def __init__(self):
         super().__init__()
         self.scroll = Scroller(self)
-        self.threadpool = QThreadPool()
         self.autoScroll()
         self.verticalScrollBar().setVisible(False)
 
     def autoScroll(self):
-        self.threadpool.start(self.scroll)
+        self.scroll.start()

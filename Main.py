@@ -373,7 +373,6 @@ class MainWindow(QMainWindow):
                 if self.addWindow is not None:
                     self.addWindow.close()
 
-                self.audienceDisplay.scroll.scroll.go = False
                 self.audienceDisplay.close()
 
                 QApplication.quit()
