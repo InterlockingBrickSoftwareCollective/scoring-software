@@ -57,15 +57,7 @@ class CycleTimeReportDialog(QDialog):
         """Query database and populate table with cycle time data"""
         try:
             # Query for all match_start entries, getting the latest timestamp for each match
-            Substrate._cur.execute('''
-                SELECT message, MAX(timestamp) as latest_timestamp
-                FROM log
-                WHERE tag = 'match_start'
-                GROUP BY message
-                ORDER BY CAST(message AS INTEGER)
-            ''')
-
-            matches = Substrate._cur.fetchall()
+            matches = Substrate.retrieveMatchStartTimes()
 
             # Set row count
             self.table.setRowCount(len(matches))
@@ -116,15 +108,7 @@ class CycleTimeReportDialog(QDialog):
             lines.append("-" * 60)
 
             # Query data again for plaintext export
-            Substrate._cur.execute('''
-                SELECT message, MAX(timestamp) as latest_timestamp
-                FROM log
-                WHERE tag = 'match_start'
-                GROUP BY message
-                ORDER BY CAST(message AS INTEGER)
-            ''')
-
-            matches = Substrate._cur.fetchall()
+            matches = Substrate.retrieveMatchStartTimes()
             previous_timestamp = None
 
             for match_num, timestamp in matches:

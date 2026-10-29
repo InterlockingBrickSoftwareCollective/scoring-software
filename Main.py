@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import *
 
 import About
 import CycleTimeReport
+import Events
 import ResourceManager
 import Substrate
 from AddWindow import AddWindow
@@ -100,6 +101,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("Scoring Display")
 
             Substrate.init()
+            syncEnabled = Sync.init()
 
             # Find size of monitor and launch app
             screen = QGuiApplication.primaryScreen().geometry()
@@ -547,8 +549,7 @@ class MainWindow(QMainWindow):
         self.audienceDisplay.rerank()
 
     def updateMatchNumber(self):
-        # TODO Make this useful
-        pass
+        Events.publish(Events.MatchSelected(self.matchNum.value()))
 
     def renameCheck(self, number, card):
         self.dlg = QDialog()
@@ -571,7 +572,7 @@ class MainWindow(QMainWindow):
     def renameTeam(self, number: int):
         team = self.fetchTeam(number)
         team.name = self.dlg.findChild(QLineEdit).text()
-        Substrate.saveTeam(int(number), team.name, team.pit)
+        Events.publish(Events.TeamUpdated(int(number), team.name, team.pit))
 
         self.rerank()
         self.dlg.close()
@@ -611,6 +612,7 @@ class MainWindow(QMainWindow):
                 if team.number == number:
                     del self.teams[i]
             self.teamGrid.update()
+            Events.publish(Events.TeamDeleted(number))
 
             self.rerank()
         except Exception as err:
@@ -625,17 +627,19 @@ class MainWindow(QMainWindow):
     def handleTimerCtl(self):
         if not self.audienceDisplay.timer.timerRunning:
             # Timer isn't running -- start timer and lock out mode control
-            Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
+            Events.publish(Events.MatchStarted(self.matchNum.value()))
             self.audienceDisplay.timer.startTimer()
             self.timerCtl.setText("Reset Timer")
             self.timerMode.setDisabled(True)
         else:
             # Timer was running -- reset timer and unlock mode control
+            Events.publish(Events.MatchAborted(self.matchNum.value()))
             self.audienceDisplay.timer.resetTimer()
             self.timerCtl.setText("Start Timer")
             self.timerMode.setDisabled(False)
 
     def timerComplete(self):
+        Events.publish(Events.MatchCompleted(self.matchNum.value()))
         self.matchNum.setValue(self.matchNum.value() + 1)
         self.changeMode()
         self.timerCtl.setText("Start Timer")
