@@ -30,6 +30,7 @@ import CycleTimeReport
 import Events
 import ResourceManager
 import Substrate
+import Sync
 import Timer
 
 from AddWindow import AddWindow
@@ -218,6 +219,10 @@ class MainWindow(QMainWindow):
             aboutAction = QAction("About...")
             aboutAction.triggered.connect(self.showAboutDialog)
             self.toyboxMenu.addActions([aboutAction, cycleTimeAction, installResPack])
+            if syncEnabled:
+                forceSyncAction = QAction("Force sync", self)
+                forceSyncAction.triggered.connect(Sync.forceSync)
+                self.toyboxMenu.addAction(forceSyncAction)
             self.toyboxButton = QPushButton("Toybox")
             self.toyboxButton.setMenu(self.toyboxMenu)
             self.toyboxButton.setFixedWidth(100)
