@@ -19,12 +19,15 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import json
 import sqlite3
+import traceback
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
 import About
+import Events
 import ResourceManager
 
 @dataclass
@@ -48,9 +51,75 @@ class ScoreEntry:
 _db = None
 _cur = None
 
+# All database access happens on a single dedicated thread, which keeps slow
+# disk writes off the UI thread and satisfies SQLite's requirement that a
+# connection only be used from the thread that created it. Work runs in the
+# order it was submitted, so reads always see every previously-submitted write.
+#
+# Functions prefixed with an underscore must only run on the database thread.
+_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="Substrate")
+
+
+def _run(fn, *args):
+    """Run fn on the database thread and wait for its result."""
+    return _executor.submit(fn, *args).result()
+
+
+def _write(fn, *args):
+    """Queue fn to run on the database thread without waiting for it."""
+    _executor.submit(fn, *args).add_done_callback(_reportWriteError)
+
+
+def _reportWriteError(future):
+    if future.exception() is not None:
+        print("Database write failed:")
+        traceback.print_exception(future.exception())
+
 
 def init():
-    """Initialize Substrate layer."""
+    """Initialize Substrate layer, then persist events to the database from here on."""
+    _run(_open)
+
+    Events.subscribe(Events.TeamAdded, lambda e: _write(_saveTeam, e.number, e.name, e.pit))
+    Events.subscribe(Events.TeamUpdated, lambda e: _write(_saveTeam, e.number, e.name, e.pit))
+    Events.subscribe(Events.TeamDeleted, lambda e: _write(_deleteTeam, e.number))
+    Events.subscribe(Events.ScoreUpdated, _onScoreUpdated)
+    Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
+
+
+def deinit():
+    """Deinitialize Substrate layer, waiting for all pending writes to finish."""
+    _run(_close)
+    _executor.shutdown()
+
+
+def loadTeams() -> list:
+    """Return a list of TeamEntry objects representing all saved teams."""
+    return _run(_loadTeams)
+
+
+def loadScores() -> list:
+    """Return a list of ScoreEntry objects representing all saved scores."""
+    return _run(_loadScores)
+
+
+def retrieveMatchStartTimes() -> list:
+    """Return (match number, start timestamp) for the latest start of each match."""
+    return _run(_retrieveMatchStartTimes)
+
+
+def writeLogEntry(tag: str, message: str):
+    """Write an internal program log entry, primarily intended for debugging and capturing stack traces."""
+    _write(_writeLogEntry, tag, message)
+
+
+def _onScoreUpdated(event):
+    _write(_saveScore, event.teamNumber, event.round, event.score)
+    if event.scoresheet is not None:
+        _write(_saveScoresheet, event.teamNumber, event.round, event.scoresheet)
+
+
+def _open():
     global _db, _cur
 
     # Check if a precreated database has been populated
@@ -69,30 +138,27 @@ def init():
 
     if len(tables) == 0:
         _createTables()
-        writeAuditEntry("db_created", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
+        _writeAuditEntry("db_created", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
     else:
-        writeAuditEntry("db_opened", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
+        _writeAuditEntry("db_opened", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
 
 
-def deinit():
-    """Deinitialize Substrate layer."""
-    writeAuditEntry("db_closed", {})
+def _close():
+    _writeAuditEntry("db_closed", {})
     _db.close()
 
 
-def loadTeams() -> list:
-    """Return a list of TeamEntry objects representing all saved teams."""
+def _loadTeams() -> list:
     _cur.execute("SELECT teamnumber, name, pit FROM teams")
     return [TeamEntry(teamnumber=t[0], name=t[1], pit=t[2]) for t in _cur.fetchall()]
 
 
-def loadScores() -> list:
-    """Return a list of ScoreEntry objects representing all saved scores."""
+def _loadScores() -> list:
     _cur.execute("SELECT teamnumber, round, score, comments FROM scores")
     return [ScoreEntry(teamnumber=s[0], round=s[1], score=s[2], comments=s[3]) for s in _cur.fetchall()]
 
 
-def saveTeam(teamnumber: int, name: str, pit: int):
+def _saveTeam(teamnumber: int, name: str, pit: int):
     """Create or update a team (number and name)."""
     # Check if team already exists
     _cur.execute("SELECT name, pit FROM teams WHERE teamnumber = ?", (teamnumber,))
@@ -107,7 +173,7 @@ def saveTeam(teamnumber: int, name: str, pit: int):
             "teamnumber": teamnumber,
             "name": name
         }
-        writeAuditEntry("team_add", auditEntry)
+        _writeAuditEntry("team_add", auditEntry)
     else:
         auditEntry = {
             "teamnumber": teamnumber,
@@ -116,10 +182,10 @@ def saveTeam(teamnumber: int, name: str, pit: int):
             "old_pit": old_team[1],
             "new_pit": pit
         }
-        writeAuditEntry("team_update", auditEntry)
+        _writeAuditEntry("team_update", auditEntry)
 
 
-def saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
+def _saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
     """Create or update a match score, writing an audit log entry to note the change."""
     slug = f"{teamnumber}-{round}"
     # Check if previous score exists
@@ -137,10 +203,10 @@ def saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
         "old_score": old_score,
         "new_score": score
     }
-    writeAuditEntry("score_update", auditEntry)
+    _writeAuditEntry("score_update", auditEntry)
 
 
-def saveScoresheet(teamnumber: int, round: int, scoresheet: str):
+def _saveScoresheet(teamnumber: int, round: int, scoresheet: str):
     """Create or update a match scoresheet, writing an audit log entry to note the change."""
     slug = f"{teamnumber}-{round}"
     # Check if previous score exists
@@ -158,12 +224,12 @@ def saveScoresheet(teamnumber: int, round: int, scoresheet: str):
         "old_score": old_scoresheet,
         "new_score": scoresheet
     }
-    writeAuditEntry("scoresheet_update", auditEntry)
+    _writeAuditEntry("scoresheet_update", auditEntry)
 
-def deleteTeam(teamnumber: int):
+def _deleteTeam(teamnumber: int):
     """Delete a team, including its associated scores."""
     # Delete the team
-    writeAuditEntry("team_delete", {"teamnumber": teamnumber})
+    _writeAuditEntry("team_delete", {"teamnumber": teamnumber})
     _cur.execute("DELETE FROM teams WHERE teamnumber = ?", (teamnumber,))
 
     # Find all associated scores, scoresheets, audit log the deletion, then perform the deletion
@@ -176,7 +242,7 @@ def deleteTeam(teamnumber: int):
             "old_score": score_entry[2],
             "new_score": None
         }
-        writeAuditEntry("score_delete", audit_entry)
+        _writeAuditEntry("score_delete", audit_entry)
         _cur.execute("DELETE FROM scores WHERE slug = ?", (score_entry[0],))
 
     _cur.execute("SELECT slug, round, scoresheet FROM scoresheets WHERE teamnumber = ?", (teamnumber,))
@@ -188,13 +254,13 @@ def deleteTeam(teamnumber: int):
             "old_scoresheet": entry[2],
             "new_scoresheet": None
         }
-        writeAuditEntry("score_delete", audit_entry)
+        _writeAuditEntry("score_delete", audit_entry)
         _cur.execute("DELETE FROM scoresheets WHERE slug = ?", (entry[0],))
 
     _db.commit()
 
 
-def writeAuditEntry(tag: str, data: dict):
+def _writeAuditEntry(tag: str, data: dict):
     """Write an audit log entry."""
     timestamp = datetime.now().timestamp()
 
@@ -207,13 +273,12 @@ def writeAuditEntry(tag: str, data: dict):
     _db.commit()
 
 
-def writeLogEntry(tag: str, message: str):
-    """Write an internal program log entry, primarily intended for debugging and capturing stack traces."""
+def _writeLogEntry(tag: str, message: str):
     timestamp = datetime.now().timestamp()
     _cur.execute("INSERT INTO log VALUES (?, ?, ?)", (timestamp, tag, message))
     _db.commit()
 
-def retrieveMatchStartTimes():
+def _retrieveMatchStartTimes():
     # Query for all match_start entries, getting the latest timestamp for each match
     _cur.execute('''
         SELECT message, MAX(timestamp) as latest_timestamp

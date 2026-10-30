@@ -27,8 +27,11 @@ from PyQt6.QtWidgets import *
 
 import About
 import CycleTimeReport
+import Events
 import ResourceManager
 import Substrate
+import Timer
+
 from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
@@ -108,6 +111,7 @@ class MainWindow(QMainWindow):
             self.teams = []
             self.insertWindow = None
             self.addWindow = None
+            self.practiceTimerCtl = None
 
             self.mainWidget = QWidget()
             self.mainLayout = QGridLayout()
@@ -161,6 +165,12 @@ class MainWindow(QMainWindow):
             self.timerCtl = QAction("Start Timer")
             self.timerCtl.triggered.connect(self.handleTimerCtl)
             self.timerCtl.setDisabled(True) # Audience display starts on rank display
+
+            Timer.init()
+            Events.subscribe(Events.MatchStarted, lambda event: self.setAudienceMode("match_timer"))
+            Events.subscribe(Events.MatchAborted, lambda event: self.updateTimerControls())
+            Events.subscribe(Events.MatchCompleted, self.onMatchCompleted)
+            Events.subscribe(Events.PracticeStarted, lambda event: self.setAudienceMode("practice_timer"))
 
             self.menuBar().addAction(self.insert)
             if self.scoresheet:
@@ -547,8 +557,7 @@ class MainWindow(QMainWindow):
         self.audienceDisplay.rerank()
 
     def updateMatchNumber(self):
-        # TODO Make this useful
-        pass
+        Events.publish(Events.MatchSelected(self.matchNum.value()))
 
     def renameCheck(self, number, card):
         self.dlg = QDialog()
@@ -571,7 +580,7 @@ class MainWindow(QMainWindow):
     def renameTeam(self, number: int):
         team = self.fetchTeam(number)
         team.name = self.dlg.findChild(QLineEdit).text()
-        Substrate.saveTeam(int(number), team.name, team.pit)
+        Events.publish(Events.TeamUpdated(int(number), team.name, team.pit))
 
         self.rerank()
         self.dlg.close()
@@ -611,42 +620,45 @@ class MainWindow(QMainWindow):
                 if team.number == number:
                     del self.teams[i]
             self.teamGrid.update()
+            Events.publish(Events.TeamDeleted(number))
 
             self.rerank()
         except Exception as err:
             print(err)
 
     def changeMode(self):
-        self.audienceDisplay.changeMode()
+        self.setAudienceMode("match_timer" if self.audienceDisplay.mode == "ranks" else "ranks")
+
+    def setAudienceMode(self, mode: str):
+        self.audienceDisplay.setMode(mode)
+        self.updateTimerControls()
+
+    def updateTimerControls(self):
+        # Lock out mode control while a match is running; timer control is only available when showing a timer
+        matchRunning = Timer.isMatchRunning()
         self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != 'ranks' else 'Timer'}")
-        self.timerCtl.setDisabled(False if self.audienceDisplay.mode != "ranks" else True)
+        self.timerMode.setDisabled(matchRunning)
+        self.timerCtl.setText("Reset Timer" if matchRunning else "Start Timer")
+        self.timerCtl.setDisabled(self.audienceDisplay.mode == "ranks")
         self.menuBar().update()
 
     def handleTimerCtl(self):
-        if not self.audienceDisplay.timer.timerRunning:
-            # Timer isn't running -- start timer and lock out mode control
-            Substrate.writeLogEntry("match_start", f"{self.matchNum.value()}")
-            self.audienceDisplay.timer.startTimer()
-            self.timerCtl.setText("Reset Timer")
-            self.timerMode.setDisabled(True)
+        if Timer.isMatchRunning():
+            Timer.abortMatch()
         else:
-            # Timer was running -- reset timer and unlock mode control
-            self.audienceDisplay.timer.resetTimer()
-            self.timerCtl.setText("Start Timer")
-            self.timerMode.setDisabled(False)
+            Timer.startMatch(self.matchNum.value())
 
-    def timerComplete(self):
+    def onMatchCompleted(self, event):
         self.matchNum.setValue(self.matchNum.value() + 1)
-        self.changeMode()
-        self.timerCtl.setText("Start Timer")
-        self.timerMode.setDisabled(False)
+        self.setAudienceMode("ranks")
 
     def practiceTimerControl(self):
-        self.practiceTimerCtl = PracticeTimerWindow(self)
-
-    def practiceTimerComplete(self):
-        if self.practiceTimerCtl is not None:
-            self.practiceTimerCtl.handleTimerComplete()
+        # Reuse the same window so it keeps showing the state of a running practice session
+        if self.practiceTimerCtl is None:
+            self.practiceTimerCtl = PracticeTimerWindow()
+        self.practiceTimerCtl.show()
+        self.practiceTimerCtl.raise_()
+        self.practiceTimerCtl.activateWindow()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

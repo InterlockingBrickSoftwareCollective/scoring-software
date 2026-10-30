@@ -24,7 +24,9 @@ from PyQt6.QtGui import *
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import *
 
+import Events
 import ResourceManager
+import Timer
 from CustomWidgets import CustomScroll
 
 sheet = """
@@ -52,7 +54,14 @@ def getMediaUrl(sound_name):
     """Get the QUrl for a sound file from the resource pack."""
     return QUrl.fromLocalFile(ResourceManager.getResourcePath(f"{sound_name}.wav"))
 
-INITIAL_TIME = 150
+# Sound played when each timer event happens
+SOUNDS = {
+    Events.MatchStarted: "start",
+    Events.MatchAborted: "foghorn",
+    Events.PracticeStarted: "bell",
+    Events.TimerWarning: "endgame",
+    Events.TimerExpired: "end",
+}
 
 
 class AudienceWindow(QMainWindow):
@@ -80,9 +89,17 @@ class AudienceWindow(QMainWindow):
             self.vbox.addStretch()
             self.widget.setLayout(self.vbox)
 
-            # Create timer widgets after vbox initialization
-            self.timer = TimerWidget(parent, self)
-            self.practice = PracticeTimerWidget(parent, self)
+            # Create clock faces after vbox initialization
+            self.matchClock = ClockFace(self, Timer.MATCH_TIME)
+            self.practiceClock = ClockFace(self, 0, banner="PRACTICE SESSION")
+            Events.subscribe(Events.TimerUpdated, self.showTime)
+
+            self.audioOutput = QAudioOutput()
+            self.audioOutput.setVolume(100)
+            self.mediaPlayer = QMediaPlayer()
+            self.mediaPlayer.setAudioOutput(self.audioOutput)
+            for eventType, sound in SOUNDS.items():
+                Events.subscribe(eventType, lambda event, sound=sound: self.playSound(sound))
 
             self.loadWidgets()
 
@@ -113,11 +130,9 @@ class AudienceWindow(QMainWindow):
     def loadWidgets(self):
         try:
             if self.mode == "match_timer":
-                self.vbox.insertWidget(0, self.timer)
-                self.timer.paintTimer()
+                self.vbox.insertWidget(0, self.matchClock)
             elif self.mode == "practice_timer":
-                self.vbox.insertWidget(0, self.practice)
-                self.practice.paintTimer()
+                self.vbox.insertWidget(0, self.practiceClock)
             else:
                 for team in self.parent.teams[::-1]:
                     widget = self.makeTeamWidget(team)
@@ -174,9 +189,9 @@ class AudienceWindow(QMainWindow):
         except Exception as err:
             print(err)
 
-    def changeMode(self):
-        self.mode = "ranks" if self.mode in ("practice_timer", "match_timer") else "match_timer"
-        self.timer.resetTimer()
+    def setMode(self, mode: str):
+        """Show the rankings ("ranks"), match timer ("match_timer"), or practice timer ("practice_timer")."""
+        self.mode = mode
         self.clearTeamWidgets()
         self.loadWidgets()
         self.updateScrollerState()
@@ -199,112 +214,12 @@ class AudienceWindow(QMainWindow):
             # Resume scrolling for rankings display
             self.scroll.scroll.resume()
 
+    def showTime(self, event):
+        clock = self.practiceClock if event.practice else self.matchClock
+        clock.showTime(event.remaining)
+
     def testSound(self):
-        self.timer.playSound("start")
-
-    def startPracticeTimer(self, practice_time: int, warning_time: int):
-        self.mode = "practice_timer"
-        self.practice.practiceTime = practice_time
-        self.practice.warningTime = warning_time
-        self.clearTeamWidgets()
-        self.loadWidgets()
-        self.updateScrollerState()
-        self.practice.startTimer()
-
-    def stopPracticeTimer(self):
-        self.practice.resetTimer()
-
-
-class TimerWidget(QWidget):
-    def __init__(self, main, audience_window):
-        super().__init__()
-
-        self.main = main
-        self.audience_window = audience_window
-
-        self.remainingTime = INITIAL_TIME
-        self.timerRunning = False
-
-        self.audioOutput = QAudioOutput()
-        self.audioOutput.setVolume(100)
-        self.mediaPlayer = QMediaPlayer()
-        self.mediaPlayer.setAudioOutput(self.audioOutput)
-
-        self.timerLayout = QVBoxLayout(self)
-        self.timerLabel = QLabel(self)
-
-        self.timerLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.timerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.timerLayout.addWidget(self.timerLabel)
-
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.updateTimer)
-
-        # Initial update of the timer label and font size
-        self.updateFontSize()
-        self.paintTimer()
-        self.setLayout(self.timerLayout)
-
-    def updateFontSize(self):
-        """Update font size based on audience window height"""
-        windowHeight = self.audience_window.height()
-        if windowHeight > 0:
-            fontSize = int(windowHeight * 0.75)
-            print(f"Height: {windowHeight}, timer font size: {fontSize}px ")
-            self.timerLabel.setStyleSheet(f"font-size: {fontSize}px; padding: -20px;")
-
-    def resizeEvent(self, event):
-        """Recalculate font size when widget is resized"""
-        super().resizeEvent(event)
-        self.updateFontSize()
-
-    def paintTimer(self):
-        # Convert remaining time to mm:ss format
-        showTime = max(0, self.remainingTime)
-        minutes = showTime // 60
-        seconds = showTime % 60
-        timeStr = f"{minutes:01d}:{seconds:02d}"
-
-        # Update the timer label
-        self.timerLabel.setText(timeStr)
-
-    def startTimer(self):
-        # Reset timer if it is already done
-        if self.remainingTime <= 0:
-            self.resetTimer()
-
-        # Start the timer
-        if not self.timerRunning:
-            self.playSound("start")
-
-            self.timerRunning = True
-            self.timer.start(1000)
-
-    def resetTimer(self):
-        if self.timerRunning:
-            self.playSound("foghorn")
-
-        self.timer.stop()  # Stop the timer
-        self.timerRunning = False
-        self.remainingTime = INITIAL_TIME
-        self.paintTimer()
-
-    def updateTimer(self):
-        # Timer tick and repaint
-        self.remainingTime -= 1
-        self.paintTimer()
-
-        if self.remainingTime >= -3: # Show "0:00" for 3 seconds after the timer runs out
-            # Endgame at 30 seconds
-            if self.remainingTime == 30:
-                self.playSound("endgame")
-
-            # End of match at 0 seconds
-            if self.remainingTime == 0:
-                self.playSound("end")
-        else:
-            self.timerRunning = False
-            self.main.timerComplete()
+        self.playSound("start")
 
     def playSound(self, sound: str):
         if ResourceManager.isResourcePackInstalled():
@@ -312,56 +227,47 @@ class TimerWidget(QWidget):
             self.mediaPlayer.setPosition(0)
             self.mediaPlayer.play()
 
-class PracticeTimerWidget(QWidget):
-    def __init__(self, main, audience_window):
+
+class ClockFace(QWidget):
+    """Large mm:ss clock display, with an optional banner above it."""
+
+    def __init__(self, audience_window, seconds, banner=None):
         super().__init__()
 
-        self.main = main
         self.audience_window = audience_window
-
-        self.practiceTime = 0
-        self.remainingTime = 0
-        self.warningTime = 0
-        self.timerRunning = False
-
-        self.audioOutput = QAudioOutput()
-        self.audioOutput.setVolume(100)
-        self.mediaPlayer = QMediaPlayer()
-        self.mediaPlayer.setAudioOutput(self.audioOutput)
 
         self.timerLayout = QVBoxLayout(self)
 
-        self.practiceLabel = QLabel("PRACTICE SESSION")
-        self.practiceLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.practiceLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.timerLayout.addWidget(self.practiceLabel)
+        self.bannerLabel = None
+        if banner is not None:
+            self.bannerLabel = QLabel(banner)
+            self.bannerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.bannerLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+            self.timerLayout.addWidget(self.bannerLabel)
 
-        # Make text very large
         self.timerLabel = QLabel(self)
         self.timerLabel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.timerLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.timerLayout.addWidget(self.timerLabel)
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.updateTimer)
-
         # Initial update of the timer label and font sizes
         self.updateFontSize()
-        self.paintTimer()
+        self.showTime(seconds)
         self.setLayout(self.timerLayout)
 
     def updateFontSize(self):
         """Update font sizes based on audience window height"""
         windowHeight = self.audience_window.height()
         if windowHeight > 0:
-            # Practice label takes 10% of height
-            labelHeight = int(windowHeight * 0.10)
-            labelFontSize = int(windowHeight * 0.08)
-            self.practiceLabel.setFixedHeight(labelHeight)
-            self.practiceLabel.setStyleSheet(f"background-color: #F74349; color: #ffffff; font-size: {labelFontSize}px;")
+            if self.bannerLabel is None:
+                timerFontSize = int(windowHeight * 0.75)
+            else:
+                # Banner takes 10% of height, and the timer font is 60% of total height
+                self.bannerLabel.setFixedHeight(int(windowHeight * 0.10))
+                self.bannerLabel.setStyleSheet(f"background-color: #F74349; color: #ffffff; font-size: {int(windowHeight * 0.08)}px;")
+                timerFontSize = int(windowHeight * 0.60)
 
-            # Timer takes remaining space, font is 60% of total height
-            timerFontSize = int(windowHeight * 0.60)
+            print(f"Height: {windowHeight}, timer font size: {timerFontSize}px ")
             self.timerLabel.setStyleSheet(f"font-size: {timerFontSize}px; padding: -20px;")
 
     def resizeEvent(self, event):
@@ -369,51 +275,5 @@ class PracticeTimerWidget(QWidget):
         super().resizeEvent(event)
         self.updateFontSize()
 
-    def paintTimer(self):
-        # Convert remaining time to mm:ss format
-        showTime = max(0, self.remainingTime)
-        minutes = showTime // 60
-        seconds = showTime % 60
-        timeStr = f"{minutes:01d}:{seconds:02d}"
-
-        # Update the timer label
-        self.timerLabel.setText(timeStr)
-
-    def startTimer(self):
-        if not self.timerRunning:
-            self.playSound("bell")
-
-            self.timer.start(1000)
-            self.timerRunning = True
-            self.remainingTime = self.practiceTime
-            self.paintTimer()
-
-    def resetTimer(self):
-        self.timer.stop()  # Stop tick
-        self.timerRunning = False
-        self.remainingTime = self.practiceTime
-        self.paintTimer()
-
-    def updateTimer(self):
-        # Timer tick and repaint
-        self.remainingTime -= 1
-        self.paintTimer()
-
-        if self.timerRunning and self.remainingTime >= -3: # Show "0:00" for 3 seconds after the timer runs out
-            # Practice warning time
-            if self.remainingTime == self.warningTime:
-                self.playSound("endgame")
-
-            # End of practice at 0 seconds
-            if self.remainingTime == 0:
-                self.playSound("end")
-        else:
-            self.main.practiceTimerComplete()
-            # Reset timer after main callback to prevent a "flash" of the newly-reset timer
-            self.resetTimer()
-
-    def playSound(self, sound: str):
-        if ResourceManager.isResourcePackInstalled():
-            self.mediaPlayer.setSource(getMediaUrl(sound))
-            self.mediaPlayer.setPosition(0)
-            self.mediaPlayer.play()
+    def showTime(self, seconds: int):
+        self.timerLabel.setText(f"{seconds // 60:01d}:{seconds % 60:02d}")

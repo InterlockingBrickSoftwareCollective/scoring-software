@@ -17,7 +17,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import Substrate
+import Events
 
 
 class Team:
@@ -33,12 +33,9 @@ class Team:
             self.thirdHighest = -1
             self.rank = 1E10
             if not from_db:
-                Substrate.saveTeam(number, name, pit)
+                Events.publish(Events.TeamAdded(self.number, name, pit))
         except Exception as err:
             print(err)
-
-    def __del__(self):
-        Substrate.deleteTeam(self.number)
 
     def __lt__(self, other):
         return self.number < other.number
@@ -47,10 +44,7 @@ class Team:
         try:
             self.scores[roundNum - 1] = score
             if not from_db:
-                Substrate.saveScore(self.number, roundNum, score)
-
-            if scoresheet is not None:
-                Substrate.saveScoresheet(self.number, roundNum, scoresheet)
+                Events.publish(Events.ScoreUpdated(self.number, roundNum, score, scoresheet))
 
             # Continuously update high score, second highest, and third highest
             rankings = list(self.scores)
