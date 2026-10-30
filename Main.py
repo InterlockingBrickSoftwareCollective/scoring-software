@@ -103,7 +103,6 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("Scoring Display")
 
             Substrate.init()
-            syncEnabled = Sync.init()
 
             # Find size of monitor and launch app
             screen = QGuiApplication.primaryScreen().geometry()
