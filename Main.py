@@ -36,7 +36,7 @@ from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
-from Team import Team
+from Team import Team, UNRANKED, rank as rankTeams
 
 sheet = """
 QLineEdit{
@@ -259,7 +259,7 @@ class MainWindow(QMainWindow):
 
             for score in Substrate.loadScores():
                 team = self.fetchTeam(score.teamnumber)
-                team.setScore(score.round, score.score, from_db=True)
+                team.setScore(score.round, score.score, score.scoresheet, from_db=True)
 
             self.rerank()
             self.show()
@@ -330,11 +330,14 @@ class MainWindow(QMainWindow):
                         if scores:
                             for i in range(1, 4):
                                 try:
-                                    if int(row[f"Round {i} Score"]) > 0:
-                                        team.setScore(i, int(row[f"Round {i} Score"]))
+                                    score = int(row[f"Round {i} Score"])
                                 except ValueError:  # probably blank entry, haven't played round
-                                    team.setScore(i, -1)
+                                    continue
                                 # unexpected exceptions get rethrown and caught below
+
+                                # Older exports wrote -1 for rounds that hadn't been played
+                                if score >= 0:
+                                    team.setScore(i, score)
 
                         self.teams.append(team)
                     self.rerank()
@@ -358,7 +361,8 @@ class MainWindow(QMainWindow):
             with open(filename, "w") as f:
                 f.write("Pit #,Team Name,Team Number,Round 1 Score,Round 2 Score,Round 3 Score\n")
                 for team in sort:
-                    f.write(f"{team.pit},{team.name},{team.number},{team.scores[0]},{team.scores[1]},{team.scores[2]}\n")
+                    scores = ",".join("" if score is None else str(score) for score in team.scores)
+                    f.write(f"{team.pit},{team.name},{team.number},{scores}\n")
 
             dialog.close()
             return True
@@ -461,7 +465,7 @@ class MainWindow(QMainWindow):
                 col = i // math.ceil(len(teamList) / 2)
                 self.teamGrid.addWidget(widget, row, col)
 
-                self.scoresEntered += sum([1 for score in team.scores if score >= 0])
+                self.scoresEntered += sum([1 for score in team.scores if score is not None])
 
             self.scoresEnteredLabel.setText(f"Scores Entered: {self.scoresEntered}")
         except Exception as err:
@@ -507,7 +511,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(QLabel(" Round 2"), 0, 4)
             layout.addWidget(QLabel(" Round 3"), 0, 5)
 
-            rank = QLabel(str(team.rank) if team.rank < 1E10 else "NP")
+            rank = QLabel(str(team.rank) if team.rank != UNRANKED else "NP")
             rank.setMinimumWidth(28)
             rank.setStyleSheet("font-size: 24px")
             layout.addWidget(rank, 1, 0, 4, 1)
@@ -517,7 +521,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(number, 1, 2, 4, 1)
 
             for num in range(3):
-                if team.scores[num] < 0:
+                if team.scores[num] is None:
                     roundWidget = QLineEdit(text="", readOnly=True)
                 else:
                     roundWidget = QLineEdit(text=str(team.scores[num]), readOnly=True)
@@ -545,13 +549,7 @@ class MainWindow(QMainWindow):
     def rerank(self):
         self.clearTeamWidgets()
 
-        # set rank field by high score
-        self.teams.sort(key=lambda x: (x.highScore, x.secondHighest, x.thirdHighest, -x.number), reverse=True)
-        for i, team in enumerate(self.teams):
-            if sum(team.scores) == -3:
-                team.rank = 1E10
-            else:
-                team.rank = i + 1
+        rankTeams(self.teams)
 
         self.loadAllTeams()
         self.audienceDisplay.rerank()
