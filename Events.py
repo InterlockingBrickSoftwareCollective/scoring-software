@@ -81,6 +81,33 @@ class MatchCompleted(Event):
     match: int
 
 
+@dataclass(frozen=True)
+class PracticeStarted(Event):
+    duration: int
+
+
+@dataclass(frozen=True)
+class PracticeEnded(Event):
+    """The practice session was stopped or ran out."""
+
+
+@dataclass(frozen=True)
+class TimerUpdated(Event):
+    """The match or practice timer display should now read `remaining` seconds."""
+    practice: bool
+    remaining: int
+
+
+@dataclass(frozen=True)
+class TimerWarning(Event):
+    """The running timer reached its warning time (e.g., endgame)."""
+
+
+@dataclass(frozen=True)
+class TimerExpired(Event):
+    """The running timer reached 0:00."""
+
+
 # Event bus
 #
 # Delivery is synchronous: publish() calls each subscriber in turn, on the

@@ -20,10 +20,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 from PyQt6.QtWidgets import *
 from PyQt6.QtCore import QTime
 
+import Events
+import Timer
+
 class PracticeTimerWindow(QMainWindow):
-    def __init__(self, parent):
+    def __init__(self):
         super().__init__()
-        self.parent = parent
 
         self.setWindowTitle("Practice Timer Control")
 
@@ -54,17 +56,15 @@ class PracticeTimerWindow(QMainWindow):
         self.mainLayout.addWidget(self.startStopBtn)
         self.mainWidget.setLayout(self.mainLayout)
         self.setCentralWidget(self.mainWidget)
-        self.show()
+
+        Events.subscribe(Events.PracticeStarted, lambda event: self.startStopBtn.setText("Stop Practice Timer"))
+        Events.subscribe(Events.PracticeEnded, lambda event: self.startStopBtn.setText("Start Practice Timer"))
 
     def handleStartStop(self):
-        if self.startStopBtn.text() == "Start Practice Timer":
+        if Timer.isPracticeRunning():
+            Timer.stopPractice()
+        else:
             practice_time = self.practiceTimeWidget.time().minute() * 60 + self.practiceTimeWidget.time().second()
             warning_time = self.warningTimeWidget.time().minute() * 60 + self.warningTimeWidget.time().second()
-            self.parent.audienceDisplay.startPracticeTimer(practice_time, warning_time)
-            self.startStopBtn.setText("Stop Practice Timer")
-        else:
-            self.parent.audienceDisplay.stopPracticeTimer()
-            self.startStopBtn.setText("Start Practice Timer")
-
-    def handleTimerComplete(self):
-        self.startStopBtn.setText("Start Practice Timer")
+            if not Timer.startPractice(practice_time, warning_time):
+                QMessageBox.warning(self, "Match in Progress", "The practice timer can't be started while a match is running.")
