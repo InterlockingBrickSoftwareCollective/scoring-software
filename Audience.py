@@ -28,6 +28,7 @@ import Events
 import ResourceManager
 import Timer
 from CustomWidgets import CustomScroll
+from Team import UNRANKED
 
 sheet = """
 QLineEdit {
@@ -162,7 +163,7 @@ class AudienceWindow(QMainWindow):
             layout.addWidget(QLabel(" Round 2"), 0, 4)
             layout.addWidget(QLabel(" Round 3"), 0, 5)
 
-            rank = QLabel(str(team.rank) if team.rank < 1E10 else "NP")
+            rank = QLabel(str(team.rank) if team.rank != UNRANKED else "NP")
             rank.setMinimumWidth(80)
             rank.setStyleSheet("font-size: 54px")
 
@@ -174,7 +175,7 @@ class AudienceWindow(QMainWindow):
             layout.addWidget(number, 1, 2, 4, 1)
 
             for num in range(3):
-                if team.scores[num] < 0:
+                if team.scores[num] is None:
                     roundWidget = QLineEdit(text="", readOnly=True)
                 else:
                     roundWidget = QLineEdit(text=str(team.scores[num]), readOnly=True)

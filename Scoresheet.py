@@ -509,7 +509,7 @@ class ScoresheetDialog(QMainWindow):
         first_nonempty_score_idx = 1e3
         for idx, score in enumerate(team.scores):
             match_num = idx + 1
-            if score == -1:
+            if score is None:
                 self.match_dropdown.addItem(f"{match_num}", match_num)
                 first_nonempty_score_idx = min(first_nonempty_score_idx, idx)
             else:
@@ -568,7 +568,7 @@ class ScoresheetDialog(QMainWindow):
             match_num = self.match_dropdown.currentData()
             team = self.parent.fetchTeam(team_num)
 
-            if team.scores[match_num - 1] != -1:
+            if team.scores[match_num - 1] is not None:
                 confirm = QMessageBox.question(
                     self,
                     "Confirmation",
@@ -580,7 +580,7 @@ class ScoresheetDialog(QMainWindow):
                     return
 
             print(f"Storing team {team_num} match {match_num} score {score}")
-            team.setScore(match_num, score, str(self.tasks))
+            team.setScore(match_num, score, dict(self.tasks))
 
             self.parent.rerank()
             self.reset()

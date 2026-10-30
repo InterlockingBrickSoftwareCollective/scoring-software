@@ -43,6 +43,7 @@ class ScoreEntry:
     round: int
     score: int
     comments: str
+    scoresheet: Optional[dict] = None
 
 
 # In Python, the module import process happens once per program execution,
@@ -83,7 +84,8 @@ def init():
     Events.subscribe(Events.TeamAdded, lambda e: _write(_saveTeam, e.number, e.name, e.pit))
     Events.subscribe(Events.TeamUpdated, lambda e: _write(_saveTeam, e.number, e.name, e.pit))
     Events.subscribe(Events.TeamDeleted, lambda e: _write(_deleteTeam, e.number))
-    Events.subscribe(Events.ScoreUpdated, _onScoreUpdated)
+    Events.subscribe(Events.ScoreUpdated, lambda e: _write(_saveScore, e.teamNumber, e.round, e.score, e.scoresheet))
+    Events.subscribe(Events.ScoreCleared, lambda e: _write(_clearScore, e.teamNumber, e.round))
     Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
 
 
@@ -99,7 +101,7 @@ def loadTeams() -> list:
 
 
 def loadScores() -> list:
-    """Return a list of ScoreEntry objects representing all saved scores."""
+    """Return a list of ScoreEntry objects representing all saved scores, with their scoresheets."""
     return _run(_loadScores)
 
 
@@ -111,12 +113,6 @@ def retrieveMatchStartTimes() -> list:
 def writeLogEntry(tag: str, message: str):
     """Write an internal program log entry, primarily intended for debugging and capturing stack traces."""
     _write(_writeLogEntry, tag, message)
-
-
-def _onScoreUpdated(event):
-    _write(_saveScore, event.teamNumber, event.round, event.score)
-    if event.scoresheet is not None:
-        _write(_saveScoresheet, event.teamNumber, event.round, event.scoresheet)
 
 
 def _open():
@@ -154,8 +150,13 @@ def _loadTeams() -> list:
 
 
 def _loadScores() -> list:
-    _cur.execute("SELECT teamnumber, round, score, comments FROM scores")
-    return [ScoreEntry(teamnumber=s[0], round=s[1], score=s[2], comments=s[3]) for s in _cur.fetchall()]
+    _cur.execute("""
+        SELECT scores.teamnumber, scores.round, scores.score, scores.comments, scoresheets.scoresheet
+        FROM scores LEFT JOIN scoresheets ON scores.slug = scoresheets.slug
+    """)
+    return [ScoreEntry(teamnumber=s[0], round=s[1], score=s[2], comments=s[3],
+                       scoresheet=json.loads(s[4]) if s[4] is not None else None)
+            for s in _cur.fetchall()]
 
 
 def _saveTeam(teamnumber: int, name: str, pit: int):
@@ -185,17 +186,17 @@ def _saveTeam(teamnumber: int, name: str, pit: int):
         _writeAuditEntry("team_update", auditEntry)
 
 
-def _saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
-    """Create or update a match score, writing an audit log entry to note the change."""
+def _saveScore(teamnumber: int, round: int, score: int, scoresheet: Optional[dict]):
+    """Create or update a match score and its scoresheet, writing audit log entries to note the change."""
     slug = f"{teamnumber}-{round}"
     # Check if previous score exists
-    _cur.execute("SELECT score FROM scores WHERE teamnumber = ? AND round = ?", (teamnumber, round))
+    _cur.execute("SELECT score FROM scores WHERE slug = ?", (slug,))
     maybe_old_score = _cur.fetchall()
     old_score = None if len(maybe_old_score) == 0 else maybe_old_score[0][0]
 
     # Allow updating existing scores by using INSERT OR REPLACE INTO
     _cur.execute("INSERT OR REPLACE INTO scores VALUES (?, ?, ?, ?, ?)",
-                 (slug, teamnumber, round, score, comments))
+                 (slug, teamnumber, round, score, ""))
 
     auditEntry = {
         "teamnumber": teamnumber,
@@ -205,24 +206,50 @@ def _saveScore(teamnumber: int, round: int, score: int, comments: str = ""):
     }
     _writeAuditEntry("score_update", auditEntry)
 
+    # A score entered without a scoresheet replaces any scoresheet the previous score had
+    _setScoresheet(teamnumber, round, json.dumps(scoresheet) if scoresheet is not None else None)
+    _db.commit()
 
-def _saveScoresheet(teamnumber: int, round: int, scoresheet: str):
-    """Create or update a match scoresheet, writing an audit log entry to note the change."""
+
+def _clearScore(teamnumber: int, round: int):
+    """Delete a match score and its scoresheet, writing audit log entries to note the change."""
     slug = f"{teamnumber}-{round}"
-    # Check if previous score exists
-    _cur.execute("SELECT scoresheet FROM scoresheets WHERE teamnumber = ? AND round = ?", (teamnumber, round))
+    _cur.execute("SELECT score FROM scores WHERE slug = ?", (slug,))
+    maybe_old_score = _cur.fetchall()
+    if len(maybe_old_score) > 0:
+        _writeAuditEntry("score_delete", {
+            "teamnumber": teamnumber,
+            "round": round,
+            "old_score": maybe_old_score[0][0],
+            "new_score": None
+        })
+        _cur.execute("DELETE FROM scores WHERE slug = ?", (slug,))
+
+    _setScoresheet(teamnumber, round, None)
+    _db.commit()
+
+
+def _setScoresheet(teamnumber: int, round: int, scoresheet: Optional[str]):
+    """Create, update or (if scoresheet is None) delete a match scoresheet, writing an audit log entry if it changed."""
+    slug = f"{teamnumber}-{round}"
+    _cur.execute("SELECT scoresheet FROM scoresheets WHERE slug = ?", (slug,))
     maybe_old_scoresheet = _cur.fetchall()
     old_scoresheet = None if len(maybe_old_scoresheet) == 0 else maybe_old_scoresheet[0][0]
 
-    # Allow updating existing scoresheets by using INSERT OR REPLACE INTO
-    _cur.execute("INSERT OR REPLACE INTO scoresheets VALUES (?, ?, ?, ?)",
-                 (slug, teamnumber, round, scoresheet))
+    if old_scoresheet == scoresheet:
+        return
+
+    if scoresheet is None:
+        _cur.execute("DELETE FROM scoresheets WHERE slug = ?", (slug,))
+    else:
+        _cur.execute("INSERT OR REPLACE INTO scoresheets VALUES (?, ?, ?, ?)",
+                     (slug, teamnumber, round, scoresheet))
 
     auditEntry = {
         "teamnumber": teamnumber,
         "round": round,
-        "old_score": old_scoresheet,
-        "new_score": scoresheet
+        "old_scoresheet": old_scoresheet,
+        "new_scoresheet": scoresheet
     }
     _writeAuditEntry("scoresheet_update", auditEntry)
 
@@ -327,7 +354,7 @@ def _createTables():
     """Internal method to create tables for a freshly-initialized database."""
     _cur.executescript("""
                        PRAGMA application_id = 0;
-                       PRAGMA user_version = 3;
+                       PRAGMA user_version = 4;
                        CREATE TABLE teams(teamnumber type UNIQUE, name, pit);
                        CREATE TABLE scores(slug type UNIQUE, teamnumber, round, score, comments);
                        CREATE TABLE audit(timestamp, tag, data);

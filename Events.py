@@ -54,10 +54,20 @@ class TeamDeleted(Event):
 
 @dataclass(frozen=True)
 class ScoreUpdated(Event):
+    """A team's score for a round was set. score is never negative."""
     teamNumber: int
     round: int
     score: int
-    scoresheet: Optional[str] = None
+    # Task key -> value, as recorded by scoresheet entry; None for scores entered without a scoresheet.
+    # Subscribers must not modify it.
+    scoresheet: Optional[dict] = None
+
+
+@dataclass(frozen=True)
+class ScoreCleared(Event):
+    """A team's score for a round was removed, so the round is unplayed again."""
+    teamNumber: int
+    round: int
 
 
 @dataclass(frozen=True)

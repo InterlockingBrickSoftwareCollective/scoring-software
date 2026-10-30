@@ -115,9 +115,9 @@ class Insert(QMainWindow):
         try:
             team = self.parent.fetchTeam(int(self.number.currentText().split(":", -1)[0]))
 
-            if -1 in team.scores:
+            if None in team.scores:
                 # If blank matches remain, then set the current round to the first blank match
-                self.round.setCurrentIndex(team.scores.index(-1))
+                self.round.setCurrentIndex(team.scores.index(None))
             else:
                 # Otherwise, set current round to last match
                 self.round.setCurrentIndex(2)
@@ -130,7 +130,7 @@ class Insert(QMainWindow):
         team = self.parent.fetchTeam(int(self.number.currentText().split(":", -1)[0]))
         num = int(self.round.currentText())
 
-        if team.scores[num - 1] >= 0:
+        if team.scores[num - 1] is not None:
             text = "Override Score"
             color = "#ED1C24"
 
@@ -152,9 +152,12 @@ class Insert(QMainWindow):
             team = self.parent.fetchTeam(int(self.number.currentText().split(":", -1)[0]))
 
             if team is not None:
-                # Clamp score [-1, 999]
-                score = max(-1, min(999, int(self.score.text())))
-                team.setScore(int(self.round.currentText()), score)
+                # A negative score clears the round; otherwise clamp score [0, 999]
+                score = int(self.score.text())
+                if score < 0:
+                    team.clearScore(int(self.round.currentText()))
+                else:
+                    team.setScore(int(self.round.currentText()), min(999, score))
 
                 self.parent.rerank()
                 self.score.setText("")

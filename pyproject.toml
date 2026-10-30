@@ -20,4 +20,8 @@ package = false
 dev = [
     "pillow",
     "pyinstaller",
+    "pytest",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
