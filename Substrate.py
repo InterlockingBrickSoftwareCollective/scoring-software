@@ -110,6 +110,27 @@ def retrieveMatchStartTimes() -> list:
     return _run(_retrieveMatchStartTimes)
 
 
+def getMeta(key: str) -> Optional[str]:
+    """Return a value saved with setMeta(), or None if there is none."""
+    return _run(_getMeta, key)
+
+
+def setMeta(key: str, value: str):
+    """Save a value in the database, replacing any previous value for key."""
+    _run(_setMeta, key, value)
+
+
+def deleteMeta(key: str):
+    """Delete a value saved with setMeta(), if there is one."""
+    _run(_deleteMeta, key)
+
+
+def copyDatabase(excludeMeta: list = ()) -> bytes:
+    """Return a consistent copy of the database file, as of every previously-submitted write,
+    leaving out the meta values for the keys in excludeMeta."""
+    return _run(_copyDatabase, list(excludeMeta))
+
+
 def writeLogEntry(tag: str, message: str):
     """Write an internal program log entry, primarily intended for debugging and capturing stack traces."""
     _write(_writeLogEntry, tag, message)
@@ -298,6 +319,39 @@ def _writeAuditEntry(tag: str, data: dict):
 
     _cur.execute("INSERT INTO audit VALUES (?, ?, ?)", (timestamp, tag, entryData))
     _db.commit()
+
+
+def _getMeta(key: str) -> Optional[str]:
+    _cur.execute("SELECT value FROM meta WHERE key = ?", (key,))
+    row = _cur.fetchone()
+    return row[0] if row is not None else None
+
+
+def _setMeta(key: str, value: str):
+    _cur.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
+    # Only the key is audited: values may be secrets (e.g., the sync client key)
+    _writeAuditEntry("meta_update", {"key": key})
+
+
+def _deleteMeta(key: str):
+    _cur.execute("DELETE FROM meta WHERE key = ?", (key,))
+    _writeAuditEntry("meta_delete", {"key": key})
+
+
+def _copyDatabase(excludeMeta: list) -> bytes:
+    _db.commit()
+    copy = sqlite3.connect(":memory:")
+    try:
+        _db.backup(copy)
+        hasMeta = copy.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='meta'").fetchone()
+        if excludeMeta and hasMeta:
+            copy.executemany("DELETE FROM meta WHERE key = ?", [(key,) for key in excludeMeta])
+            copy.commit()
+            # Rebuild the database, so that nothing of the deleted values is left in free pages
+            copy.execute("VACUUM")
+        return copy.serialize()
+    finally:
+        copy.close()
 
 
 def _writeLogEntry(tag: str, message: str):
