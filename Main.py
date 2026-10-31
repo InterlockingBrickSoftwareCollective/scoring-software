@@ -506,11 +506,9 @@ class MainWindow(QMainWindow):
             print(err)
 
     def addSingleTeam(self, team):
-        try:
-            self.teams.append(team)
-            self.rerank()
-        except Exception as err:
-            print(err)
+        # Errors are left to the caller, which shows them to the operator
+        self.teams.append(team)
+        self.rerank()
 
     def addTeams(self, teams):
         try:

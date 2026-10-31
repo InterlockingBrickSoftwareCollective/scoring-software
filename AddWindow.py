@@ -17,6 +17,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import traceback
+
 from PyQt6.QtWidgets import *
 
 from Team import Team
@@ -42,6 +44,39 @@ QPushButton {
     font-size: 18px;
 }
 """
+
+
+class InvalidTeam(ValueError):
+    """A team that can't be added, with a message to show the operator."""
+
+    def __init__(self, message: str, field: str):
+        super().__init__(message)
+        self.message = message
+        # Which input to fix: "number" or "name"
+        self.field = field
+
+
+def validateTeam(numberText: str, nameText: str, teams: list) -> tuple[int, str]:
+    """Check a manually entered team, returning its number and name, or raise InvalidTeam."""
+    numberText = numberText.strip()
+    name = nameText.strip()
+
+    if not numberText:
+        raise InvalidTeam("Enter a team number.", "number")
+    if not numberText.isdecimal() or int(numberText) == 0:
+        raise InvalidTeam(f"\"{numberText}\" isn't a valid team number. Team numbers are whole numbers, like 1234.",
+                          "number")
+    number = int(numberText)
+
+    existing = next((team for team in teams if team.number == number), None)
+    if existing is not None:
+        raise InvalidTeam(f"Team {number} ({existing.name}) has already been added. "
+                          "To change its name, use Rename on its tile in the scoring display.", "number")
+
+    if not name:
+        raise InvalidTeam("Enter a team name.", "name")
+
+    return number, name
 
 
 class AddWindow(QMainWindow):
@@ -78,7 +113,7 @@ class AddWindow(QMainWindow):
             self.mainLayout.addWidget(self.name)
             
             self.add = QPushButton("Add Team")
-            self.add.pressed.connect(self.addTeam)
+            self.add.clicked.connect(self.addTeam)
             self.mainLayout.addWidget(self.add)
 
             self.mainWidget.setLayout(self.mainLayout)
@@ -91,15 +126,25 @@ class AddWindow(QMainWindow):
 
     def addTeam(self):
         try:
-            if len(self.name.text()) == 0 or len(self.number.text()) == 0:
-                return
-            team = Team(self.name.text(), int(self.number.text()), self.pit.value())
-            self.parent.addSingleTeam(team)
+            number, name = validateTeam(self.number.text(), self.name.text(), self.parent.teams)
+        except InvalidTeam as err:
+            QMessageBox.warning(self, "Can't Add Team", err.message)
+            field = self.number if err.field == "number" else self.name
+            field.setFocus()
+            field.selectAll()
+            return
 
-            AddWindow.pitNumber = self.pit.value() + 1
-            self.pit.setValue(AddWindow.pitNumber)
-            self.name.setText("")
-            self.number.setText("")
-            self.number.setFocus()
+        try:
+            self.parent.addSingleTeam(Team(name, number, self.pit.value()))
         except Exception as err:
-            print(err)
+            traceback.print_exc()
+            QMessageBox.critical(self, "Can't Add Team",
+                                 f"Something went wrong adding team {number}, so it may not have been saved.\n\n"
+                                 f"Details: {err}")
+            return
+
+        AddWindow.pitNumber = self.pit.value() + 1
+        self.pit.setValue(AddWindow.pitNumber)
+        self.name.setText("")
+        self.number.setText("")
+        self.number.setFocus()
