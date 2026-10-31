@@ -27,7 +27,7 @@ from PyQt6.QtWidgets import *
 import Events
 import ResourceManager
 import Timer
-from CustomWidgets import CustomScroll
+from CustomWidgets import CustomScroll, fitRankLabel
 from Team import UNRANKED
 
 # The audience display always uses light colors, even when the system is in dark mode,
@@ -172,8 +172,8 @@ class AudienceWindow(QMainWindow):
             layout.addWidget(QLabel(" Round 3"), 0, 5)
 
             rank = QLabel(str(team.rank) if team.rank != UNRANKED else "NP")
-            rank.setMinimumWidth(80)
             rank.setStyleSheet("font-size: 54px")
+            fitRankLabel(rank, len(self.parent.teams), minimumWidth=80)
 
             number = QLineEdit(text=str(team.number), readOnly=True)
             number.setFixedWidth(200)

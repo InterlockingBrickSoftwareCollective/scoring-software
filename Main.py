@@ -35,6 +35,7 @@ import Timer
 
 from AddWindow import AddWindow
 from Audience import AudienceWindow
+from CustomWidgets import fitRankLabel
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
 from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
@@ -592,8 +593,8 @@ class MainWindow(QMainWindow):
             layout.addWidget(QLabel(" Round 3"), 0, 5)
 
             rank = QLabel(str(team.rank) if team.rank != UNRANKED else "NP")
-            rank.setMinimumWidth(28)
             rank.setStyleSheet("font-size: 24px")
+            fitRankLabel(rank, len(self.teams))
             layout.addWidget(rank, 1, 0, 4, 1)
             layout.addWidget(QLineEdit(text=str(team.name), readOnly=True), 1, 1, 4, 1)
             number = QLineEdit(text=str(team.number), readOnly=True)

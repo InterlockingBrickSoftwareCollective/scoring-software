@@ -32,3 +32,12 @@ class CustomScroll(QScrollArea):
 
     def autoScroll(self):
         self.scroll.start()
+
+
+def fitRankLabel(label: QLabel, teamCount: int, minimumWidth: int = 0):
+    """Make a rank label wide enough for "NP" or any rank up to teamCount, so the rank column
+    lines up across team cards. Set the label's font size before calling this."""
+    label.ensurePolished()
+    metrics = label.fontMetrics()
+    textWidth = max(metrics.boundingRect(text).width() for text in ("NP", str(teamCount)))
+    label.setMinimumWidth(max(minimumWidth, textWidth + 2 * label.margin() + 4))
