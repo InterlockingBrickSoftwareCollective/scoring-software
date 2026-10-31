@@ -71,7 +71,7 @@ def show(parent):
     try:
         aboutDialog = QDialog(parent)
         aboutDialog.setWindowTitle("About")
-        aboutDialog.setFixedSize(500, 200)
+        aboutDialog.setFixedWidth(500)
 
         mainLayout = QVBoxLayout()
 
@@ -145,6 +145,8 @@ def show(parent):
         mainLayout.addWidget(ossLabel)
 
         aboutDialog.setLayout(mainLayout)
+        # Size the height to fit the wrapped text, which varies with platform fonts
+        aboutDialog.setFixedHeight(mainLayout.totalHeightForWidth(500))
         aboutDialog.exec()
 
     except Exception as err:
