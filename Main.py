@@ -40,6 +40,7 @@ from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
 from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
 from Team import Team, UNRANKED, rank as rankTeams
+from TimerBanner import TimerBanner
 
 # Colors for the light and dark color schemes, filled into the style sheets below
 LIGHT_COLORS = {
@@ -308,8 +309,14 @@ class MainWindow(QMainWindow):
             self.scroll.setWidgetResizable(True)
             self.scroll.setWidget(self.widget)
 
+            # Running timer readout, in its own row below the team list so it never covers the list or
+            # gets in the way of scrolling it
+            self.timerBanner = TimerBanner()
+
             self.mainLayout.addWidget(self.scroll, 1, 0, 1, 7)
             self.mainLayout.addWidget(self.configWidget, 0, 0, 1, 7)
+            self.mainLayout.addWidget(self.timerBanner, 2, 0, 1, 7)
+            self.mainLayout.setRowStretch(1, 1)
             self.mainWidget.setLayout(self.mainLayout)
             self.setCentralWidget(self.mainWidget)
             self.applyTheme()
