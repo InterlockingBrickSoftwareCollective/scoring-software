@@ -546,7 +546,8 @@ class MainWindow(QMainWindow):
 
     def clearTeamWidgets(self):
         try:
-            for i in reversed(range(self.teamGrid.count() - 1)):
+            # Unlike the audience display's list, the grid holds nothing but team cards
+            for i in reversed(range(self.teamGrid.count())):
                 self.teamGrid.itemAt(i).widget().setParent(None)
         except Exception as err:
             print(err)
