@@ -28,6 +28,8 @@ from PyQt6.QtGui import QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import *
 
 import ResourceManager
+from ScoresheetModel import Game, IncompleteScoresheet, Task
+from Team import Team
 
 # Load ScoresheetBackend from resource pack
 scoresheet_backend_path = ResourceManager.getResourcePath("ScoresheetBackend.py")
@@ -63,17 +65,28 @@ QPushButton {
 
 
 class ScoresheetDialog(QMainWindow):
-    def __init__(self, parent):
+    """Scoresheet entry window. Opened for a particular team and match, it shows that round's
+    scoresheet, if it has one, for review and correction, and the team and match can't be changed."""
+
+    def __init__(self, main, team: Team | None = None, match: int | None = None):
         super().__init__()
-        self.parent = parent
+        self.main = main
 
-        # Load game metadata
-        metadataPath = ResourceManager.getResourcePath("scoresheet.xml")
-        self.game = ET.parse(metadataPath).getroot()
-        self.tasks = {}
+        root = ET.parse(ResourceManager.getResourcePath("scoresheet.xml")).getroot()
+        self.game = Game.from_xml(root)
 
-        # Perform connectivity check
-        if not self.connectivity_check():
+        # (team number, match) when opened for a particular round
+        self.round: tuple[int, int] | None = None
+        # Selections as of the last load or save, to tell whether there are changes to lose
+        self.saved_selections: dict[str, str] = {}
+        # Keyboard entry starts disabled, and is enabled by pressing Enter
+        self.keyboard_mode_enabled = False
+        self.current_task_index = 0
+        self.time_elapsed = 0
+
+        # Reviewing an existing scoresheet doesn't need the backend until the score is recalculated
+        reviewing = team is not None and team.scoresheets[match - 1] is not None
+        if not reviewing and not self.connectivity_check():
             QMessageBox.critical(
                 self,
                 "Connectivity Error",
@@ -82,32 +95,6 @@ class ScoresheetDialog(QMainWindow):
             self.close()
             return
 
-        # Initialize QRects and clicked status
-        for element in self.game.iter():
-            if element.tag == "option":
-                x, y, w, h = (
-                    int(element.attrib["x"]),
-                    int(element.attrib["y"]),
-                    int(element.attrib["width"]),
-                    int(element.attrib["height"]),
-                )
-                element.attrib["rect"] = QRect(x, y, w, h)
-                element.attrib["clicked"] = False
-
-        # Build ordered list of tasks for keyboard navigation
-        self.ordered_tasks = []
-        for mission in filter(lambda x: x.tag == "mission", self.game.iter()):
-            for task in mission:
-                self.ordered_tasks.append(task)
-
-        # Track current task index for keyboard input
-        self.current_task_index = 0
-
-        # Set up keyboard event filter flag (starts disabled, enabled by pressing Enter)
-        self.keyboard_mode_enabled = False
-
-        # Window setup
-        self.setWindowTitle("Scoresheet Entry")
         self.widget = QWidget()
         self.widget.setStyleSheet(sheet)
 
@@ -117,25 +104,17 @@ class ScoresheetDialog(QMainWindow):
         # Top bar: Team and match selection, score display, Calculate button
         topbar_layout = QHBoxLayout()
 
-        # Team selection
         topbar_layout.addWidget(QLabel("Team:"))
         self.team_dropdown = QComboBox(self.widget)
-        self.team_dropdown.addItem("", None)
-        for team in sorted(parent.teams):
-            self.team_dropdown.addItem(f"{team.number}", team.number)
         self.team_dropdown.currentIndexChanged.connect(self.on_team_select)
         topbar_layout.addWidget(self.team_dropdown)
 
-        # Match selection
         topbar_layout.addWidget(QLabel("Match:"))
         self.match_dropdown = QComboBox(self.widget)
-        self.match_dropdown.setEnabled(False)
         topbar_layout.addWidget(self.match_dropdown)
 
-        # Score label
         self.score_label = QLabel(self.widget)
         self.score_label.setFixedWidth(150)
-        self.score_label.setText("")
         topbar_layout.addWidget(self.score_label)
 
         # Calculate Score button (stretch to fill remaining space)
@@ -145,120 +124,138 @@ class ScoresheetDialog(QMainWindow):
 
         # Label to display the image
         self.pixmap_label = QLabel(self.widget)
-        self.pixmap_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self.pixmap_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.pixmap_label.setScaledContents(False)
+        self.pixmap_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pixmap_label.setMinimumSize(100, 100)  # Allow shrinking below original size
 
-        # Load image data from element
-        graphic_base64_element = self.game.find("image")
-        if graphic_base64_element is None or not graphic_base64_element.text:
+        image = root.find("image")
+        if image is None or not image.text:
             raise IOError("No graphic contained in scoresheet definition file!")
-
-        graphic_data = base64.b64decode(graphic_base64_element.text.strip())
-        self.original_pixmap = QPixmap()
-        self.original_pixmap.loadFromData(graphic_data)  # Original pixmap to preserve
+        self.original_pixmap = QPixmap()  # Original pixmap to preserve
+        self.original_pixmap.loadFromData(base64.b64decode(image.text.strip()))
         if self.original_pixmap.isNull():
             raise IOError("Could not load scoresheet graphic!")
-
-        self.pixmap_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pixmap_label.setMinimumSize(
-            100, 100
-        )  # Allow shrinking below original size
-
-        # Free up memory and reduce size of game XML object
-        graphic_base64_element.clear()
-        del graphic_base64_element
-        del graphic_data
 
         # Track scale factor for coordinate transformation
         self.scale_factor = 1.0
         self.scaled_pixmap = self.original_pixmap.copy()
-        self.resizing = False  # Flag to prevent recursive resize events
 
-        # Assemble together
         layout.addLayout(topbar_layout)
         layout.addWidget(self.pixmap_label)
-        self.widget.setLayout(layout)
         self.setCentralWidget(self.widget)
 
-        # Install event filter on widgets to intercept keyboard events
+        # Intercept keyboard events on child widgets
         self.team_dropdown.installEventFilter(self)
         self.match_dropdown.installEventFilter(self)
         calc_button.installEventFilter(self)
 
-        # Move a little bit off the parent window
+        if team is None:
+            self.reset()
+        else:
+            self.show_round(team, match)
+
+        # Move a little bit off the main window
         self.show()
         self.raise_()
         self.activateWindow()
-        self.move(self.parent.geometry().x() + 50, self.parent.geometry().y() + 50)
+        self.move(self.main.geometry().x() + 50, self.main.geometry().y() + 50)
 
-        # # Set initial window size to 95% of smallest screen dimension
+        # Set initial window size to 95% of smallest screen dimension
         screen = self.screen().availableGeometry()
         target_size = int(0.95 * min(screen.width(), screen.height()))
 
         # Calculate window size maintaining image aspect ratio
         img_aspect_ratio = self.original_pixmap.width() / self.original_pixmap.height()
-
         if img_aspect_ratio > 1:  # Image is wider than tall
-            initial_width = target_size
             # Add space for UI elements
-            initial_height = int(target_size / img_aspect_ratio) + 50
+            self.resize(target_size, int(target_size / img_aspect_ratio) + 50)
         else:  # Image is taller than wide
-            initial_height = target_size
-            initial_width = int(target_size * img_aspect_ratio)
-
-        self.resize(initial_width, initial_height)
+            self.resize(int(target_size * img_aspect_ratio), target_size)
 
         # Start elapsed timer
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_timer)
-        self.time_elapsed = 0
         self.timer.start(1000)
 
+    def open_for(self, team: Team, match: int):
+        """Switch to a team's match, after confirming that unsaved selections can be discarded."""
+        if self.has_unsaved_changes():
+            confirm = QMessageBox.question(
+                self,
+                "Discard Changes",
+                f"Discard the changes to the scoresheet being entered,\nand open team {team.number}'s match {match} instead?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if confirm == QMessageBox.StandardButton.No:
+                self.raise_()
+                self.activateWindow()
+                return
+
+        self.show_round(team, match)
+        self.raise_()
+        self.activateWindow()
+
+    def show_round(self, team: Team, match: int):
+        """Show a team's match, with its scoresheet if it has one, and lock team and match selection."""
+        self.round = (team.number, match)
+        self.populate_teams()
+        self.team_dropdown.setCurrentIndex(self.team_dropdown.findData(team.number))
+        self.match_dropdown.setCurrentIndex(self.match_dropdown.findData(match))
+        self.team_dropdown.setEnabled(False)
+        self.match_dropdown.setEnabled(False)
+
+        scoresheet = team.scoresheets[match - 1]
+        self.game.load(scoresheet)
+        self.saved_selections = self.game.selections()
+        self.score_label.setText(f"Stored score: {team.scores[match - 1]}" if scoresheet is not None else "")
+        self.restart_entry()
+
+    def reset(self):
+        """Reset to a blank scoresheet, with any team and match selectable."""
+        self.round = None
+        self.populate_teams()
+        self.team_dropdown.setEnabled(True)
+        self.game.clear()
+        self.saved_selections = {}
+        self.score_label.setText("")
+        self.restart_entry()
+
+    def populate_teams(self):
+        # Rebuilt each time, so teams added since the window opened can be selected
+        self.team_dropdown.clear()
+        self.team_dropdown.addItem("", None)
+        for team in sorted(self.main.teams):
+            self.team_dropdown.addItem(f"{team.number}", team.number)
+
+    def restart_entry(self):
+        self.keyboard_mode_enabled = False
+        self.current_task_index = 0
+        self.time_elapsed = 0
+        self.update_title()
+        self.update_image()
+
+    def has_unsaved_changes(self) -> bool:
+        return self.game.selections() != self.saved_selections
+
     def mousePressEvent(self, event):
-        """
-        Qt handler for mouse press events.
-        Check if an option within a mission task is clicked; if so, unclick its siblings, then repaint scoresheet.
-        """
-        # Capture the position of the mouse click relative to the image label
-        click_pos = self.pixmap_label.mapFrom(self, event.position().toPoint())
+        """Toggle the option clicked, unselecting its task's other options."""
+        if (hit := self.game.option_at(self.to_image_point(event.position().toPoint()))) is not None:
+            task, option = hit
+            task.toggle(option)
+            self.update_image()
 
-        # Account for the centered image within the label
-        label_width = self.pixmap_label.width()
-        label_height = self.pixmap_label.height()
-        scaled_img_width = int(self.original_pixmap.width() * self.scale_factor)
-        scaled_img_height = int(self.original_pixmap.height() * self.scale_factor)
+    def to_image_point(self, window_point: QPoint) -> QPoint:
+        """Convert a point in window coordinates to original scoresheet graphic coordinates."""
+        label_point = self.pixmap_label.mapFrom(self, window_point)
 
-        # Calculate the offset due to centering
-        x_offset = (label_width - scaled_img_width) // 2
-        y_offset = (label_height - scaled_img_height) // 2
+        # Account for the image being centered within the label
+        x_offset = (self.pixmap_label.width() - int(self.original_pixmap.width() * self.scale_factor)) // 2
+        y_offset = (self.pixmap_label.height() - int(self.original_pixmap.height() * self.scale_factor)) // 2
 
-        # Adjust click position to image coordinates
-        image_x = click_pos.x() - x_offset
-        image_y = click_pos.y() - y_offset
-
-        # Convert to original image coordinates by dividing by scale factor
-        original_x = int(image_x / self.scale_factor)
-        original_y = int(image_y / self.scale_factor)
-        original_click_pos = QPoint(original_x, original_y)
-
-        # Check if the click is inside any of the rectangles
-        # Python XML parser doesn't have a "get siblings" or "get parent" method,
-        # so get the task first then get its children in separate loops
-        for task in filter(lambda x: x.tag == "task", self.game.iter()):
-            for option in task:
-                if option.attrib["rect"].contains(original_click_pos):
-                    # Toggle clicked state
-                    option.attrib["clicked"] = not option.attrib["clicked"]
-
-                    # Set all siblings to "unclicked"
-                    for sibling in filter(lambda x: x is not option, task):
-                        sibling.attrib["clicked"] = False
-
-                    # Repaint
-                    self.update_image()
-                    break
+        return QPoint(int((label_point.x() - x_offset) / self.scale_factor),
+                      int((label_point.y() - y_offset) / self.scale_factor))
 
     def keyPressEvent(self, event):
         """
@@ -269,66 +266,33 @@ class ScoresheetDialog(QMainWindow):
         Also reached directly (not via eventFilter) when no child widget has
         focus, e.g. on macOS where combo boxes and buttons don't take focus.
         """
-        key = event.key()
-
-        # Handle Enter key: first press enables keyboard mode, subsequent presses calculate
-        if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
-            if not self.keyboard_mode_enabled:
-                self.keyboard_mode_enabled = True
-                self.update_image()  # Redraw to show current task indicator line
-            else:
-                self.on_calculate()
-            return
-
-        # Handle numeric keys 0-9
-        if self.keyboard_mode_enabled and Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
-            # Convert key to index
-            digit = key - Qt.Key.Key_0
-
-            # Check if we're within bounds of task list
-            if self.current_task_index >= len(self.ordered_tasks):
-                return  # Already processed all tasks
-
-            current_task = self.ordered_tasks[self.current_task_index]
-            options = list(current_task)
-
-            # For tasks with 2 options (false/true), map 0→false, 1→true
-            if len(options) == 2:
-                # Find which option has value="false" and which has value="true"
-                false_idx = None
-                true_idx = None
-                for idx, opt in enumerate(options):
-                    if opt.attrib["value"] == "false":
-                        false_idx = idx
-                    elif opt.attrib["value"] == "true":
-                        true_idx = idx
-
-                if digit == 0 and false_idx is not None:
-                    self.select_option_by_index(current_task, false_idx)
-                elif digit == 1 and true_idx is not None:
-                    self.select_option_by_index(current_task, true_idx)
-            else:
-                # For tasks with multiple numeric options, select by index
-                # Find the option with value matching the digit
-                for idx, opt in enumerate(options):
-                    if opt.attrib["value"] == str(digit):
-                        self.select_option_by_index(current_task, idx)
-                        break
-
-            return
-
-        # Pass other keys to parent handler
-        super().keyPressEvent(event)
+        match event.key():
+            case Qt.Key.Key_Return | Qt.Key.Key_Enter:
+                if not self.keyboard_mode_enabled:
+                    self.keyboard_mode_enabled = True
+                    self.update_image()  # Redraw to show current task indicator line
+                else:
+                    self.on_calculate()
+            case key if self.keyboard_mode_enabled and Qt.Key.Key_0 <= key <= Qt.Key.Key_9:
+                if self.current_task_index < len(self.game.tasks):
+                    task = self.game.tasks[self.current_task_index]
+                    if (option := task.option_for_digit(key - Qt.Key.Key_0)) is not None:
+                        task.selected = option
+                        # Advance to the next task before repainting, so the indicator line moves
+                        self.current_task_index += 1
+                        self.update_image()
+            case _:
+                super().keyPressEvent(event)
 
     def eventFilter(self, obj, event):
         """
         Event filter to intercept keyboard events before they reach child widgets.
-        This allows numeric keys and + to be used for scoresheet entry even when
+        This allows numeric keys and Enter to be used for scoresheet entry even when
         combo boxes or buttons have focus.
         """
         if event.type() == event.Type.KeyPress:
             key = event.key()
-            is_enter = key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter
+            is_enter = key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
             is_digit = Qt.Key.Key_0 <= key <= Qt.Key.Key_9
 
             # Always intercept Enter; intercept numeric keys only in keyboard mode
@@ -336,76 +300,27 @@ class ScoresheetDialog(QMainWindow):
                 self.keyPressEvent(event)
                 return True  # Event handled, don't pass to widget
 
-        # Pass all other events to the widget
         return super().eventFilter(obj, event)
 
-    def select_option_by_index(self, task, option_index):
-        """
-        Select an option in a task by its index.
-        Used for keyboard input.
-        """
-        options = list(task)
-        if option_index < 0 or option_index >= len(options):
-            return  # Invalid index, do nothing
-
-        selected_option = options[option_index]
-
-        # Set the selected option as clicked
-        selected_option.attrib["clicked"] = True
-
-        # Unclick all siblings
-        for sibling in filter(lambda x: x is not selected_option, task):
-            sibling.attrib["clicked"] = False
-
-        # Advance to next task BEFORE repainting
-        # This ensures the indicator line moves to the next task
-        self.current_task_index += 1
-
-        # Repaint (line will now appear at the new current_task_index)
-        self.update_image()
-
     def resizeEvent(self, event):
-        """
-        Qt handler for window resize events.
-        Recalculate scoresheet image size and repaint.
-        """
+        """Rescale the scoresheet image to fit the window, and repaint."""
         super().resizeEvent(event)
 
         # Skip if UI hasn't been fully initialized yet
-        if not hasattr(self, "pixmap_label") or not hasattr(self, "original_pixmap"):
+        if not hasattr(self, "scaled_pixmap"):
             return
 
-        # Get the actual size of the image label widget
-        label_width = self.pixmap_label.width()
-        label_height = self.pixmap_label.height()
-
-        # Calculate scale factor while maintaining aspect ratio
-        width_scale = label_width / self.original_pixmap.width()
-        height_scale = label_height / self.original_pixmap.height()
-        self.scale_factor = min(width_scale, height_scale)
-
-        # Scale the pixmap
-        scaled_size = self.original_pixmap.size() * self.scale_factor
+        self.scale_factor = min(self.pixmap_label.width() / self.original_pixmap.width(),
+                               self.pixmap_label.height() / self.original_pixmap.height())
         self.scaled_pixmap = self.original_pixmap.scaled(
-            scaled_size,
+            self.original_pixmap.size() * self.scale_factor,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
-
-        # Update the image with current selections
         self.update_image()
 
-    def connectivity_check(self):
+    def connectivity_check(self) -> bool:
         """Check whether the scoresheet backend currently has connectivity."""
-        # Construct blank scoresheet for backend to check
-        tasks = {}
-        for mission in filter(lambda x: x.tag == "mission", self.game.iter()):
-            for task in mission:
-                # Always get the first option just to provide something valid to the backend
-                json_key = task.attrib["eh_task_name"]
-                json_value = task[0].attrib["value"]
-                tasks[json_key] = json_value
-
         msg = QMessageBox(self)
         msg.setWindowTitle("Connectivity Check")
         msg.setText("Checking scoresheet connectivity...")
@@ -416,14 +331,12 @@ class ScoresheetDialog(QMainWindow):
         msg.show()
         QApplication.processEvents()  # Force the dialog to appear immediately
 
-        # Submit blank scoresheet
-        result = False
         try:
-            ScoresheetBackend.get_score(tasks)
+            ScoresheetBackend.get_score(self.game.placeholder_scoresheet())
             result = True
-        except:
+        except Exception:
             # Any exception is a failed connectivity check
-            pass
+            result = False
 
         # Ensure the dialog is properly cleaned up. Use hide() rather than close():
         # QMessageBox ignores close() when it has no escape button, which left the
@@ -435,170 +348,109 @@ class ScoresheetDialog(QMainWindow):
         return result
 
     def update_timer(self):
-        """Update elapsed time for current scoresheet."""
         self.time_elapsed += 1
-        # Convert remaining time to m:ss format
-        minutes = self.time_elapsed // 60
-        seconds = self.time_elapsed % 60
-        timeStr = f"{minutes:01d}:{seconds:02d}"
-        self.setWindowTitle(f"Scoresheet Entry ({timeStr})")
+        self.update_title()
+
+    def update_title(self):
+        """Show what's being entered and how long it's taken, in m:ss format."""
+        title = "Scoresheet Entry" if self.round is None else "Scoresheet: Team {}, Match {}".format(*self.round)
+        minutes, seconds = divmod(self.time_elapsed, 60)
+        self.setWindowTitle(f"{title} ({minutes:01d}:{seconds:02d})")
+
+    def scaled(self, rect: QRect) -> QRect:
+        return QRect(int(rect.x() * self.scale_factor), int(rect.y() * self.scale_factor),
+                     int(rect.width() * self.scale_factor), int(rect.height() * self.scale_factor))
 
     def update_image(self):
-        """Repaint scoresheet to reflect current mission states."""
-        # Create a copy of the scaled pixmap to draw on
-        pixmap_copy = self.scaled_pixmap.copy()
+        """Repaint scoresheet to reflect the current selections."""
+        pixmap = self.scaled_pixmap.copy()
+        painter = QPainter(pixmap)
+        pen = QPen(Qt.GlobalColor.red)
 
-        # Use QPainter to draw rectangles on the pixmap
-        painter = QPainter(pixmap_copy)
-        pen = QPen(Qt.PenStyle.SolidLine)
-        for option in filter(lambda x: x.tag == "option", self.game.iter()):
-            if option.attrib["clicked"]:
-                pen.setColor(Qt.GlobalColor.red)  # Set pen color to red if clicked
-                pen.setWidth(max(1, int(7 * self.scale_factor)))  # Scale pen width
-            else:
-                pen.setColor(Qt.GlobalColor.transparent)  # Transparent for unclicked
-            painter.setPen(pen)
-
-            # Scale the rectangle coordinates
-            original_rect = option.attrib["rect"]
-            scaled_rect = QRect(
-                int(original_rect.x() * self.scale_factor),
-                int(original_rect.y() * self.scale_factor),
-                int(original_rect.width() * self.scale_factor),
-                int(original_rect.height() * self.scale_factor),
-            )
-            painter.drawRect(scaled_rect)
+        pen.setWidth(max(1, int(7 * self.scale_factor)))
+        painter.setPen(pen)
+        for option in self.game.selected_options():
+            painter.drawRect(self.scaled(option.rect))
 
         # Draw current task indicator line (if keyboard mode is enabled)
-        if self.keyboard_mode_enabled and self.current_task_index < len(self.ordered_tasks):
-            current_task = self.ordered_tasks[self.current_task_index]
-
-            # Check if task has x, y, width attributes (backwards compatibility)
-            if "x" in current_task.attrib and "y" in current_task.attrib and "width" in current_task.attrib:
-                # Get task line coordinates
-                task_x = int(current_task.attrib["x"])
-                task_y = int(current_task.attrib["y"])
-                task_width = int(current_task.attrib["width"])
-
-                # Scale coordinates
-                scaled_x = int(task_x * self.scale_factor)
-                scaled_y = int(task_y * self.scale_factor)
-                scaled_width = int(task_width * self.scale_factor)
-
-                # Draw red line for current task
-                pen.setColor(Qt.GlobalColor.red)
+        if self.keyboard_mode_enabled and self.current_task_index < len(self.game.tasks):
+            if (line := self.game.tasks[self.current_task_index].line) is not None:
+                x, y, width = (int(n * self.scale_factor) for n in line)
                 pen.setWidth(max(2, int(4 * self.scale_factor)))  # Slightly thinner than option rectangles
                 painter.setPen(pen)
-                painter.drawLine(scaled_x, scaled_y, scaled_x + scaled_width, scaled_y)
+                painter.drawLine(x, y, x + width, y)
 
         painter.end()
-
-        # Set the updated pixmap back to the QLabel
-        self.pixmap_label.setPixmap(pixmap_copy)
+        self.pixmap_label.setPixmap(pixmap)
 
     def on_team_select(self):
         """On team selection, update the match dropdown"""
         self.match_dropdown.clear()
-        team_num = self.team_dropdown.currentData()
-        team = self.parent.fetchTeam(team_num)
+        team = self.main.fetchTeam(self.team_dropdown.currentData())
 
         if team is None:
             self.match_dropdown.setEnabled(False)
             return
 
-        first_nonempty_score_idx = 1e3
-        for idx, score in enumerate(team.scores):
-            match_num = idx + 1
-            if score is None:
-                self.match_dropdown.addItem(f"{match_num}", match_num)
-                first_nonempty_score_idx = min(first_nonempty_score_idx, idx)
-            else:
-                self.match_dropdown.addItem(f"{match_num} ({score})", match_num)
+        for match, score in enumerate(team.scores, start=1):
+            self.match_dropdown.addItem(f"{match}" if score is None else f"{match} ({score})", match)
 
-        if first_nonempty_score_idx != 1e3:
-            self.match_dropdown.setCurrentIndex(first_nonempty_score_idx)
+        # Default to the first match without a score
+        first_unplayed = next((i for i, score in enumerate(team.scores) if score is None), None)
+        if first_unplayed is not None:
+            self.match_dropdown.setCurrentIndex(first_unplayed)
 
-        self.match_dropdown.setEnabled(True)
+        self.match_dropdown.setEnabled(self.round is None)
 
     def on_calculate(self):
         """
         Calculate the score represented by the current state of the scoresheet,
         present a question to submit it, and if confirmed, submit the score.
         """
-        if self.team_dropdown.currentData() is None:
+        team_num = self.team_dropdown.currentData()
+        match = self.match_dropdown.currentData()
+        if team_num is None:
             QMessageBox.critical(self, "Error", "No team selected!")
             return
 
-        self.tasks = {}
-        for mission in filter(lambda x: x.tag == "mission", self.game.iter()):
-            for task in mission:
-                json_key = task.attrib["eh_task_name"]
-                json_value = None
-
-                for opt in task:
-                    if opt.attrib["clicked"] is True:
-                        json_value = opt.attrib["value"]
-
-                if json_value is None:
-                    mission_str = mission.attrib.get("number", mission.attrib["name"])
-                    QMessageBox.critical(
-                        self, "Error", f"Missing value in mission {mission_str}!"
-                    )
-                    return
-
-                self.tasks[json_key] = json_value
-
         try:
-            score = ScoresheetBackend.get_score(self.tasks)
-        except:
-            QMessageBox.critical(
-                self, "Error", "Could not calculate score! Check network connectivity."
-            )
+            tasks = self.game.scoresheet()
+        except IncompleteScoresheet as err:
+            QMessageBox.critical(self, "Error", f"{err}!")
             return
 
+        try:
+            score = ScoresheetBackend.get_score(tasks)
+        except Exception:
+            QMessageBox.critical(self, "Error", "Could not calculate score! Check network connectivity.")
+            return
+
+        team = self.main.fetchTeam(team_num)
+        if team is None:
+            QMessageBox.critical(self, "Error", f"Team {team_num} no longer exists!")
+            return
+
+        if (previous := team.scores[match - 1]) is None:
+            question = f"Calculated score is <b>{score}</b>.<br>Submit this score?"
+            default = QMessageBox.StandardButton.Yes
+        else:
+            question = f"Calculated score is <b>{score}</b>.<br>Replace previous score of {previous}?"
+            # Replacing is what a scoresheet opened for its round is for, but otherwise may be a mistake
+            default = QMessageBox.StandardButton.Yes if self.round else QMessageBox.StandardButton.No
+
         confirm = QMessageBox.question(
-            self,
-            "Confirm Score",
-            f"Calculated score is <b>{score}</b>. Submit this score?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if confirm == QMessageBox.StandardButton.Yes:
-            team_num = self.team_dropdown.currentData()
-            match_num = self.match_dropdown.currentData()
-            team = self.parent.fetchTeam(team_num)
+            self, "Confirm Score", question,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, default)
+        if confirm != QMessageBox.StandardButton.Yes:
+            self.score_label.setText(f"Score: {score}")
+            return
 
-            if team.scores[match_num - 1] is not None:
-                confirm = QMessageBox.question(
-                    self,
-                    "Confirmation",
-                    f"Team {team_num} already has a score for match {match_num};\nare you sure you want to overwrite it?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                    QMessageBox.StandardButton.No,
-                )
-                if confirm == QMessageBox.StandardButton.No:
-                    return
+        print(f"Storing team {team_num} match {match} score {score}")
+        team.setScore(match, score, tasks)
+        self.main.rerank()
 
-            print(f"Storing team {team_num} match {match_num} score {score}")
-            team.setScore(match_num, score, dict(self.tasks))
-
-            self.parent.rerank()
+        if self.round is None:
             self.reset()
         else:
-            self.score_label.setText(f"Score: {score}")
-
-    def reset(self):
-        """Reset scoresheet to initial state"""
-        # Clear clicked state
-        for option in filter(lambda x: x.tag == "option", self.game.iter()):
-            option.attrib["clicked"] = False
-
-        self.update_image()
-        self.tasks = {}
-        self.team_dropdown.setCurrentIndex(0)
-        self.match_dropdown.setCurrentIndex(0)
-        self.match_dropdown.setEnabled(False)
-        self.score_label.setText("")
-        self.time_elapsed = 0
-        self.current_task_index = 0
-        self.keyboard_mode_enabled = False
+            self.saved_selections = self.game.selections()
+            self.close()

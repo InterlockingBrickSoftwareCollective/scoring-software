@@ -23,6 +23,17 @@ from PyQt6.QtWidgets import *
 from Scroller import Scroller
 
 
+class ScoreBubble(QLineEdit):
+    """Read-only display of a round's score, which can be double-clicked."""
+    doubleClicked = pyqtSignal()
+
+    def __init__(self, text: str):
+        super().__init__(text=text, readOnly=True)
+
+    def mouseDoubleClickEvent(self, event):
+        self.doubleClicked.emit()
+
+
 class CustomScroll(QScrollArea):
     def __init__(self):
         super().__init__()

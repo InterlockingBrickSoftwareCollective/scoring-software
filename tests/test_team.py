@@ -83,3 +83,24 @@ def test_teams_and_scores_restored_from_the_database_are_not_published(published
     team = Team("Bricks", 42, from_db=True)
     team.setScore(1, 180, from_db=True)
     assert published == []
+
+
+def test_scoresheets_are_kept_with_their_scores():
+    team = Team("Bricks", 42, from_db=True)
+    team.setScore(1, 180, {"m01a": "true"}, from_db=True)
+    team.setScore(2, 90)
+    assert team.scoresheets == [{"m01a": "true"}, None, None]
+
+
+def test_a_score_entered_without_a_scoresheet_replaces_the_rounds_scoresheet():
+    team = Team("Bricks", 42)
+    team.setScore(1, 180, {"m01a": "true"})
+    team.setScore(1, 200)
+    assert team.scoresheets[0] is None
+
+
+def test_clearing_a_score_forgets_its_scoresheet():
+    team = Team("Bricks", 42)
+    team.setScore(3, 180, {"m01a": "true"})
+    team.clearScore(3)
+    assert team.scoresheets == [None, None, None]

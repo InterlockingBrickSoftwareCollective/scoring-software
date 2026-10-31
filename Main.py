@@ -35,7 +35,7 @@ import Timer
 
 from AddWindow import AddWindow
 from Audience import AudienceWindow
-from CustomWidgets import fitRankLabel
+from CustomWidgets import ScoreBubble, fitRankLabel
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
 from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
@@ -154,6 +154,7 @@ class MainWindow(QMainWindow):
 
             self.teams = []
             self.insertWindow = None
+            self.scoresheetWindow = None
             self.addWindow = None
             self.practiceTimerCtl = None
 
@@ -461,6 +462,8 @@ class MainWindow(QMainWindow):
 
                 if self.insertWindow is not None:
                     self.insertWindow.close()
+                if self.scoresheetWindow is not None:
+                    self.scoresheetWindow.close()
                 if self.addWindow is not None:
                     self.addWindow.close()
 
@@ -490,13 +493,33 @@ class MainWindow(QMainWindow):
         # Do nothing if no teams loaded yet
         if len(self.teams) == 0:
             QMessageBox.critical(self, "Error", "No teams loaded!")
+        elif self.scoresheetWindowIsOpen():
+            self.scoresheetWindow.raise_()
+            self.scoresheetWindow.activateWindow()
         else:
-            try:
-                if self.insertWindow is None or not self.insertWindow.isVisible():
-                    self.insertWindow = Scoresheet.ScoresheetDialog(self)
-            except Exception as e:
-                QMessageBox.critical(self, "Error", "Problem using scoresheet entry!\nUse score calculator and add scores manually.")
-                self.scoresheet.setEnabled(False)
+            self.openScoresheetWindow()
+
+    def openScoresheetFor(self, team: Team, roundNum: int):
+        """Open a round's scoresheet, or a blank one for the round if it was scored without one."""
+        if self.scoresheetWindowIsOpen():
+            self.scoresheetWindow.open_for(team, roundNum)
+        else:
+            self.openScoresheetWindow(team, roundNum)
+
+    def scoresheetAvailable(self) -> bool:
+        # Disabled after a problem using scoresheet entry
+        return self.scoresheet is not None and self.scoresheet.isEnabled()
+
+    def scoresheetWindowIsOpen(self) -> bool:
+        return self.scoresheetWindow is not None and self.scoresheetWindow.isVisible()
+
+    def openScoresheetWindow(self, team: Team | None = None, roundNum: int | None = None):
+        try:
+            self.scoresheetWindow = Scoresheet.ScoresheetDialog(self, team, roundNum)
+        except Exception as err:
+            print(err)
+            QMessageBox.critical(self, "Error", "Problem using scoresheet entry!\nUse score calculator and add scores manually.")
+            self.scoresheet.setEnabled(False)
 
     def fetchTeam(self, number):
         try:
@@ -608,12 +631,14 @@ class MainWindow(QMainWindow):
             layout.addWidget(number, 1, 2, 4, 1)
 
             for num in range(3):
-                if team.scores[num] is None:
-                    roundWidget = QLineEdit(text="", readOnly=True)
-                else:
-                    roundWidget = QLineEdit(text=str(team.scores[num]), readOnly=True)
-                    if team.highScoreIndex == num:
-                        roundWidget.setStyleSheet("border: 4px solid #ED1C24")
+                score = team.scores[num]
+                roundWidget = ScoreBubble("" if score is None else str(score))
+                if score is not None and team.highScoreIndex == num:
+                    roundWidget.setStyleSheet("border: 4px solid #ED1C24")
+                if self.scoresheetAvailable():
+                    roundWidget.setToolTip("Double-click to open scoresheet")
+                    roundWidget.doubleClicked.connect(
+                        lambda team=team, roundNum=num + 1: self.openScoresheetFor(team, roundNum))
                 roundWidget.setFixedWidth(70)
                 layout.addWidget(roundWidget, 1, num + 3, 4, 1)
 

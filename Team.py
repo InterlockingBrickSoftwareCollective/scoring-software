@@ -33,6 +33,8 @@ class Team:
             self.pit = pit
             # None means the team hasn't played that round yet
             self.scores: list[Optional[int]] = [None, None, None]
+            # Scoresheet entered for each round's score; None for rounds scored without one
+            self.scoresheets: list[Optional[dict]] = [None, None, None]
             self.highScoreIndex = None
             self.rank = UNRANKED
             if not from_db:
@@ -46,6 +48,7 @@ class Team:
     def setScore(self, roundNum: int, score: int, scoresheet: Optional[dict] = None, from_db=False):
         try:
             self.scores[roundNum - 1] = score
+            self.scoresheets[roundNum - 1] = scoresheet
             self._updateHighScore()
             if not from_db:
                 Events.publish(Events.ScoreUpdated(self.number, roundNum, score, scoresheet))
@@ -58,6 +61,7 @@ class Team:
             if self.scores[roundNum - 1] is None:
                 return
             self.scores[roundNum - 1] = None
+            self.scoresheets[roundNum - 1] = None
             self._updateHighScore()
             Events.publish(Events.ScoreCleared(self.number, roundNum))
         except Exception as err:
