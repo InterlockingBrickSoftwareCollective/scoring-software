@@ -2,7 +2,7 @@
 name = "scoring-software"
 description = "Scoring software for robotics competitions"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "pyqt6==6.11.0",
     "pyqt6-qt6==6.11.2",
