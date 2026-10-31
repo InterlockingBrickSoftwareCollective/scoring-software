@@ -20,6 +20,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import csv
 import math
 import sys
+from string import Template
 
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
@@ -39,11 +40,35 @@ from PracticeTimerWindow import PracticeTimerWindow
 from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
 from Team import Team, UNRANKED, rank as rankTeams
 
-sheet = """
+# Colors for the light and dark color schemes, filled into the style sheets below
+LIGHT_COLORS = {
+    "field": "white",
+    "field_text": "black",
+    "field_border": "gray",
+    "spin_border": "black",
+    "accent": "#F8B4B6",
+    "accent_text": "black",
+    "inactive": "#aaaaaa",
+    "inactive_text": "black",
+}
+
+DARK_COLORS = {
+    "field": "#2b2b2b",
+    "field_text": "#f0f0f0",
+    "field_border": "#6e6e6e",
+    "spin_border": "#8a8a8a",
+    "accent": "#5c3437",
+    "accent_text": "#f0f0f0",
+    "inactive": "#4a4a4a",
+    "inactive_text": "#b0b0b0",
+}
+
+sheet = Template("""
 QLineEdit{
     font-size: 20px;
-    background-color: white;
-    border: 1px solid gray;
+    background-color: $field;
+    color: $field_text;
+    border: 1px solid $field_border;
     border-radius: 4px;
     padding: 2px;
 }
@@ -57,7 +82,8 @@ QLabel #config_area {
 }
 
 QMenuBar {
-    background-color: #F8B4B6;
+    background-color: $accent;
+    color: $accent_text;
     border: 1px solid gray;
     padding: 12px;
     font-size: 18px;
@@ -69,10 +95,14 @@ QAction {
 }
 
 QWidget #team_card {
-    background-color: #F8B4B6;
+    background-color: $accent;
     border: 1px solid gray;
     padding: 1px;
     border-radius: 4px;
+}
+
+QWidget #team_card QLabel {
+    color: $accent_text;
 }
 
 QPushButton {
@@ -84,12 +114,23 @@ QPushButton {
 
 QSpinBox {
     font-size: 20px;
-    background-color: white;
-    border: 2px solid black;
+    background-color: $field;
+    color: $field_text;
+    border: 2px solid $spin_border;
     border-radius: 4px;
     padding: 2px;
 }
-"""
+""")
+
+sortButtonSheet = Template("background-color: $accent; color: $accent_text")
+inactiveSortButtonSheet = Template("background-color: $inactive; color: $inactive_text")
+
+
+def themeColors():
+    """Colors for the system's current light or dark color scheme."""
+    if QGuiApplication.styleHints().colorScheme() == Qt.ColorScheme.Dark:
+        return DARK_COLORS
+    return LIGHT_COLORS
 
 
 class MainWindow(QMainWindow):
@@ -200,12 +241,10 @@ class MainWindow(QMainWindow):
             # Sort type
             self.sortNum = QPushButton("Sort by Team Number")
             self.sortNum.setFixedWidth(180)
-            self.sortNum.setStyleSheet("background-color: #F8B4B6; color: black")
             self.sortNum.pressed.connect(self.sortTeamsByNumber)
 
             self.sortRank = QPushButton("Sort by Team Rank")
             self.sortRank.setFixedWidth(180)
-            self.sortRank.setStyleSheet("background-color: #aaaaaa; color: black")
             self.sortRank.pressed.connect(self.sortTeamsByRank)
             self.sortRank.setEnabled(False)
 
@@ -272,7 +311,8 @@ class MainWindow(QMainWindow):
             self.mainLayout.addWidget(self.configWidget, 0, 0, 1, 7)
             self.mainWidget.setLayout(self.mainLayout)
             self.setCentralWidget(self.mainWidget)
-            self.setStyleSheet(sheet)
+            self.applyTheme()
+            QGuiApplication.styleHints().colorSchemeChanged.connect(self.applyTheme)
 
             # Restore any teams and scores in the database
             self.addTeams([Team(team.name, team.teamnumber, team.pit, from_db=True) for team in Substrate.loadTeams()])
@@ -523,12 +563,20 @@ class MainWindow(QMainWindow):
         self.sortNum.setEnabled(self.sortByRank)
         self.sortRank.setEnabled(not self.sortByRank)
 
-        if self.sortByRank:
-            self.sortNum.setStyleSheet("background-color: #F8B4B6; color: black")
-            self.sortRank.setStyleSheet("background-color: #aaaaaa; color: black")
-        else:
-            self.sortNum.setStyleSheet("background-color: #aaaaaa; color: black")
-            self.sortRank.setStyleSheet("background-color: #F8B4B6; color: black")
+        self.styleSortButtons()
+
+    def styleSortButtons(self):
+        # Highlight the button that switches to the other sort order
+        colors = themeColors()
+        active = sortButtonSheet.substitute(colors)
+        inactive = inactiveSortButtonSheet.substitute(colors)
+        self.sortNum.setStyleSheet(active if self.sortByRank else inactive)
+        self.sortRank.setStyleSheet(inactive if self.sortByRank else active)
+
+    def applyTheme(self):
+        """Style the window for the system's current light or dark color scheme."""
+        self.setStyleSheet(sheet.substitute(themeColors()))
+        self.styleSortButtons()
 
     def makeTeamWidget(self, team):
         try:
@@ -717,5 +765,4 @@ if __name__ == "__main__":
         print(f"Failed to load resource pack: {e}")
 
     window = MainWindow(app)
-    window.setStyleSheet(sheet)
     window.show()

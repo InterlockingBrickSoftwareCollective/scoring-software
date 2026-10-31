@@ -30,17 +30,25 @@ import Timer
 from CustomWidgets import CustomScroll
 from Team import UNRANKED
 
+# The audience display always uses light colors, even when the system is in dark mode,
+# so every color is set here rather than coming from the system palette
 sheet = """
+QMainWindow, QAbstractScrollArea, QAbstractScrollArea > QWidget > QWidget {
+    background-color: #ececec;
+}
+
 QLineEdit {
     font-size: 54px;
     background-color: white;
+    color: black;
     border: 1px solid gray;
     border-radius: 4px;
     padding: 10px;
 }
 
 QLabel {
-    font-size: 20px
+    font-size: 20px;
+    color: black;
 }
 
 QWidget #team_card{
