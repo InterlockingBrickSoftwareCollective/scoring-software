@@ -36,6 +36,7 @@ from AddWindow import AddWindow
 from Audience import AudienceWindow
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
+from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
 from Team import Team, UNRANKED, rank as rankTeams
 
 sheet = """
@@ -192,9 +193,9 @@ class MainWindow(QMainWindow):
             self.matchNum.valueChanged.connect(self.updateMatchNumber)
 
             # Scores inputted counter
-            self.scoresEnteredLabel = QLabel("Scores Entered: 0")
+            self.scoresEnteredLabel = QLabel("Scores Entered: 0 / 0")
             self.scoresEnteredLabel.setStyleSheet("font-size: 20px")
-            self.scoresEnteredLabel.setFixedWidth(200)
+            self.scoresEnteredLabel.setFixedWidth(260)
 
             # Sort type
             self.sortNum = QPushButton("Sort by Team Number")
@@ -217,6 +218,23 @@ class MainWindow(QMainWindow):
             aboutAction = QAction("About...")
             aboutAction.triggered.connect(self.showAboutDialog)
             self.toyboxMenu.addActions([aboutAction, cycleTimeAction, installResPack])
+
+            # Sync to score reflector
+            self.sync = SyncController(self)
+            self.toyboxMenu.addSeparator()
+            setUpSyncAction = QAction("Set up sync...", self)
+            setUpSyncAction.triggered.connect(self.sync.setUp)
+            self.syncNowAction = QAction("Sync now", self)
+            self.syncNowAction.triggered.connect(self.sync.syncNow)
+            self.removeSyncAction = QAction("Remove sync...", self)
+            self.removeSyncAction.triggered.connect(self.sync.remove)
+            self.eventStatusMenu = EventStatusMenu(self.sync, self.matchNum.value, self)
+            self.toyboxMenu.addActions([setUpSyncAction, self.syncNowAction, self.eventStatusMenu.menuAction(),
+                                        self.removeSyncAction])
+            self.sync.statusChanged.connect(self.updateSyncActions)
+            self.syncStatusButton = SyncStatusButton(self.sync)
+            self.finalizeButton = FinalizeEventButton(self.sync)
+
             self.toyboxButton = QPushButton("Toybox")
             self.toyboxButton.setMenu(self.toyboxMenu)
             self.toyboxButton.setFixedWidth(100)
@@ -228,8 +246,10 @@ class MainWindow(QMainWindow):
             self.configLayout.addWidget(QLabel(" " * 6), 0, 4)
             self.configLayout.addWidget(self.sortNum, 0, 5)
             self.configLayout.addWidget(self.sortRank, 0, 6)
-            self.configLayout.setColumnStretch(7, 1)  # Add stretch to push Toybox to the right
-            self.configLayout.addWidget(self.toyboxButton, 0, 8)
+            self.configLayout.setColumnStretch(7, 1)  # Add stretch to push sync controls and Toybox to the right
+            self.configLayout.addWidget(self.finalizeButton, 0, 7, alignment=Qt.AlignmentFlag.AlignRight)
+            self.configLayout.addWidget(self.syncStatusButton, 0, 8)
+            self.configLayout.addWidget(self.toyboxButton, 0, 9)
             self.configLayout.setContentsMargins(0, 0, 0, 0)
 
             self.configWidget = QWidget()
@@ -264,6 +284,8 @@ class MainWindow(QMainWindow):
             self.rerank()
             self.show()
 
+            self.sync.startFromSavedConfig()
+
             # Render audience window, then bring focus back to main scoring window
             self.audienceDisplay.show()
             self.raise_()
@@ -275,6 +297,12 @@ class MainWindow(QMainWindow):
 
     def showAboutDialog(self):
         About.show(self)
+
+    def updateSyncActions(self, status):
+        configured = status is not None
+        self.syncNowAction.setVisible(configured)
+        self.removeSyncAction.setVisible(configured)
+        self.eventStatusMenu.menuAction().setVisible(configured)
 
     def showCycleTimeReport(self):
         CycleTimeReport.show(self)
@@ -380,6 +408,7 @@ class MainWindow(QMainWindow):
                 confirm = QMessageBox.StandardButton.Yes
 
             if confirm == QMessageBox.StandardButton.Yes:
+                self.sync.shutdown()
                 Substrate.deinit()
 
                 if self.insertWindow is not None:
@@ -467,7 +496,10 @@ class MainWindow(QMainWindow):
 
                 self.scoresEntered += sum([1 for score in team.scores if score is not None])
 
-            self.scoresEnteredLabel.setText(f"Scores Entered: {self.scoresEntered}")
+            # Every team plays three rounds
+            expected = len(teamList) * 3
+            self.scoresEnteredLabel.setText(f"Scores Entered: {self.scoresEntered} / {expected}")
+            self.finalizeButton.setScoresComplete(expected > 0 and self.scoresEntered >= expected)
         except Exception as err:
             print(err)
 
