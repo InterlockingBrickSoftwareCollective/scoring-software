@@ -72,7 +72,7 @@ class ScoreCleared(Event):
 
 @dataclass(frozen=True)
 class MatchSelected(Event):
-    """The current match number changed, so that match is now queueing."""
+    """The current match number changed, so that match is the next one to run."""
     match: int
 
 
@@ -131,6 +131,13 @@ _subscribers = {}
 def subscribe(eventType: type, handler: Callable[[Event], None]):
     """Call handler with every published event of eventType (including its subclasses)."""
     _subscribers.setdefault(eventType, []).append(handler)
+
+
+def unsubscribe(eventType: type, handler: Callable[[Event], None]):
+    """Stop calling a handler previously passed to subscribe() with the same eventType."""
+    handlers = _subscribers.get(eventType, [])
+    if handler in handlers:
+        handlers.remove(handler)
 
 
 def publish(event: Event):
