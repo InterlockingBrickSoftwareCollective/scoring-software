@@ -24,7 +24,7 @@ def syncFile(**overrides) -> dict:
         "format": "score-reflector-event-sync",
         "version": 1,
         "event": {"code": "fall-qual", "name": "Fall Qualifier"},
-        "syncUrl": "https://scores.example.org:8443/api/v1/events/fall-qual",
+        "syncUrl": "https://api.scores.example.org/api/v1/events/fall-qual",
         "caCertificate": PEM_CERT,
         "clientCertificate": PEM_CERT,
         "clientKey": PEM_KEY,
@@ -105,7 +105,7 @@ def test_sync_file_round_trips_through_its_saved_form():
     config = SyncConfig.parse(json.dumps(syncFile(expiresAt="2026-11-06T00:05:09Z")))
     assert config.eventCode == "fall-qual"
     assert config.eventName == "Fall Qualifier"
-    assert config.host == "scores.example.org:8443"
+    assert config.host == "api.scores.example.org"
     assert config.expiresAt == datetime(2026, 11, 6, 0, 5, 9, tzinfo=UTC)
     assert SyncConfig.parse(config.toJson()) == config
 
@@ -113,7 +113,7 @@ def test_sync_file_round_trips_through_its_saved_form():
 @pytest.mark.parametrize("overrides", [
     {"format": "something-else"},
     {"version": 2},
-    {"syncUrl": "http://scores.example.org:8443/api/v1/events/fall-qual"},
+    {"syncUrl": "http://api.scores.example.org/api/v1/events/fall-qual"},
     {"clientKey": ""},
     {"caCertificate": "not a certificate"},
     {"event": None},

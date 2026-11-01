@@ -102,10 +102,20 @@ def test_a_sync_file_from_its_setup_page_is_accepted(receiver):
     assert response.getheader("Access-Control-Allow-Origin") is None
     [config] = receiver.received
     assert config.eventName == "Fall Qualifier"
-    assert config.host == "scores.example.org:8443"
+    assert config.host == "api.scores.example.org"
 
 
-@pytest.mark.parametrize("origin", ["https://evil.example", "http://scores.example.org", None, "https://scores.example.org/x"])
+@pytest.mark.parametrize("origin", ["https://scores.example.org", "https://api.scores.example.org",
+                                    "https://SCORES.Example.org", "https://example.org"])
+def test_the_setup_page_may_be_on_the_sync_file_host_or_a_parent_domain(receiver, origin):
+    response = post(receiver, delivery(origin=origin))
+    assert response.status == 200
+    assert len(receiver.received) == 1
+
+
+@pytest.mark.parametrize("origin", ["https://evil.example", "http://scores.example.org", None, "https://scores.example.org/x",
+                                    "https://other.scores.example.org", "https://res.example.org",
+                                    "https://api.scores.example.org.evil.test", "https://192.0.2.1"])
 def test_the_setup_page_must_be_on_the_sync_file_host(receiver, origin):
     response = post(receiver, delivery(origin=origin))
     assert response.status == 403

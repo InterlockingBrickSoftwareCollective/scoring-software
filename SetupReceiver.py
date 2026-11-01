@@ -23,6 +23,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 # for the protocol.
 
 import http.server
+import ipaddress
 import json
 import socket
 import threading
@@ -106,6 +107,24 @@ def _httpsOriginHost(origin) -> Optional[str]:
     return host
 
 
+def _sameOrParentHost(page: str, host: str) -> bool:
+    """Whether page is host or a parent domain of it, ignoring case: for example scores.example.org
+    for api.scores.example.org, but not example.org.evil.test or other.scores.example.org. An IP
+    address only matches itself."""
+    page, host = page.lower(), host.lower()
+    if not page:
+        return False
+    if page == host:
+        return True
+    for name in (page, host):
+        try:
+            ipaddress.ip_address(name)
+            return False
+        except ValueError:
+            pass
+    return host.endswith("." + page)
+
+
 # The receiver's window. Its messages are in docs/sync-setup.md; there's no confirmation step, so
 # it only waits for the scoring software to try the credentials.
 _PAGE = """<!DOCTYPE html>
@@ -147,7 +166,7 @@ function show(id) {
 window.addEventListener("message", async (event) => {
 	const data = event.data;
 	// Only the window that opened this one, and only an HTTPS page. The receiver checks that the
-	// page is on the sync server's host.
+	// page is on the sync server's host or a parent domain of it.
 	if (event.source !== opener || !event.origin.startsWith("https://")) return;
 	if (data?.format !== FORMAT || data?.version !== VERSION || data?.type !== "sync-file" || busy) return;
 
@@ -244,8 +263,10 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         except SyncConfigError as err:
             return self._error(400, str(err))
 
-        # The setup page is on the same host as the sync API
-        if _httpsOriginHost(body.get("origin")) != urlsplit(config.syncUrl).hostname:
+        # The setup page is on the sync API's host or a parent domain of it: the score reflector
+        # serves setup on its public host and the sync API on a subdomain of it
+        pageHost = _httpsOriginHost(body.get("origin"))
+        if pageHost is None or not _sameOrParentHost(pageHost, urlsplit(config.syncUrl).hostname):
             return self._error(403, "The setup page isn't on this event's score reflector.")
 
         receiver = self.server.receiver
