@@ -778,11 +778,6 @@ if __name__ == "__main__":
     if app.style().name() == "windows11":
         app.setStyle("windowsvista")
 
-    # QMessageBox raises an accessibility "alert" event when shown, which makes Windows play its standard
-    # dialog sound. Swallow accessibility events so dialogs are silent; only the test sound and the
-    # timer sounds (played through the media player) should be audible.
-    QAccessible.installUpdateHandler(lambda event: None)
-
     print(f"Interlocking Brick Scoring Software version {About.getVersion()}")
 
     try:
