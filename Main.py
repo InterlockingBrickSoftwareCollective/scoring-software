@@ -208,8 +208,7 @@ class MainWindow(QMainWindow):
             self.timerMode = QAction("Show Timer")
             self.timerMode.triggered.connect(self.changeMode)
             self.timerCtl = QAction("Start Timer")
-            self.timerCtl.triggered.connect(self.handleTimerCtl)
-            self.timerCtl.setDisabled(True) # Audience display starts on rank display
+            self.timerCtl.triggered.connect(self.handleTimerCtl)  # Starting a match also switches the audience display to the timer
 
             Timer.init()
             Events.subscribe(Events.MatchStarted, lambda event: self.setAudienceMode("match_timer"))
@@ -744,12 +743,11 @@ class MainWindow(QMainWindow):
         self.updateTimerControls()
 
     def updateTimerControls(self):
-        # Lock out mode control while a match is running; timer control is only available when showing a timer
+        # Lock out mode control while a match is running
         matchRunning = Timer.isMatchRunning()
         self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != 'ranks' else 'Timer'}")
         self.timerMode.setDisabled(matchRunning)
         self.timerCtl.setText("Reset Timer" if matchRunning else "Start Timer")
-        self.timerCtl.setDisabled(self.audienceDisplay.mode == "ranks")
         self.menuBar().update()
 
     def handleTimerCtl(self):
