@@ -17,7 +17,6 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-import csv
 import math
 import sys
 from string import Template
@@ -31,6 +30,7 @@ import CycleTimeReport
 import Events
 import ResourceManager
 import Substrate
+import TeamCsv
 import Timer
 
 from AddWindow import AddWindow
@@ -399,25 +399,17 @@ class MainWindow(QMainWindow):
             filename = dialog.getOpenFileName(self)[0]
 
             if ".csv" in filename:
-                with open(filename, 'r') as n:
-                    data = csv.DictReader(n)
-                    for row in data:
-                        team = Team(row["Team Name"], row["Team Number"])
+                # Parse the whole file first, so a bad row doesn't leave a partial import
+                for record in TeamCsv.readTeams(filename):
+                    team = Team(record.name, record.number, record.pit)
 
-                        if scores:
-                            for i in range(1, 4):
-                                try:
-                                    score = int(row[f"Round {i} Score"])
-                                except ValueError:  # probably blank entry, haven't played round
-                                    continue
-                                # unexpected exceptions get rethrown and caught below
+                    if scores:
+                        for i, score in enumerate(record.scores, start=1):
+                            if score is not None:
+                                team.setScore(i, score)
 
-                                # Older exports wrote -1 for rounds that hadn't been played
-                                if score >= 0:
-                                    team.setScore(i, score)
-
-                        self.teams.append(team)
-                    self.rerank()
+                    self.teams.append(team)
+                self.rerank()
 
             dialog.close()
         except Exception as err:
@@ -434,12 +426,7 @@ class MainWindow(QMainWindow):
             if not filename.endswith(".csv"):
                 filename += ".csv"
 
-            sort = sorted(self.teams, key=lambda x: x.pit if x.pit != 0 else x.number, reverse=False)
-            with open(filename, "w") as f:
-                f.write("Pit #,Team Name,Team Number,Round 1 Score,Round 2 Score,Round 3 Score\n")
-                for team in sort:
-                    scores = ",".join("" if score is None else str(score) for score in team.scores)
-                    f.write(f"{team.pit},{team.name},{team.number},{scores}\n")
+            TeamCsv.writeTeams(filename, self.teams)
 
             dialog.close()
             return True
