@@ -233,6 +233,7 @@ class MainWindow(QMainWindow):
             self.matchNum = QSpinBox()
             self.matchNum.setMinimum(1)
             self.matchNum.setFixedWidth(60)
+            self.restoreMatchNumber()  # Before connecting, so restoring doesn't count as a new selection
             self.matchNum.valueChanged.connect(self.updateMatchNumber)
 
             # Scores inputted counter
@@ -664,6 +665,11 @@ class MainWindow(QMainWindow):
 
         self.loadAllTeams()
         self.audienceDisplay.rerank()
+
+    def restoreMatchNumber(self):
+        saved = Substrate.loadSelectedMatch()
+        if saved is not None:
+            self.matchNum.setValue(saved)
 
     def updateMatchNumber(self):
         Events.publish(Events.MatchSelected(self.matchNum.value()))

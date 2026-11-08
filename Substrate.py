@@ -52,6 +52,9 @@ class ScoreEntry:
 _db = None
 _cur = None
 
+# Meta table key holding the match number the operator last selected
+SELECTED_MATCH_META_KEY = "match.selected"
+
 # All database access happens on a single dedicated thread, which keeps slow
 # disk writes off the UI thread and satisfies SQLite's requirement that a
 # connection only be used from the thread that created it. Work runs in the
@@ -87,6 +90,7 @@ def init():
     Events.subscribe(Events.ScoreUpdated, lambda e: _write(_saveScore, e.teamNumber, e.round, e.score, e.scoresheet))
     Events.subscribe(Events.ScoreCleared, lambda e: _write(_clearScore, e.teamNumber, e.round))
     Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
+    Events.subscribe(Events.MatchSelected, lambda e: _write(_setMeta, SELECTED_MATCH_META_KEY, str(e.match)))
 
 
 def deinit():
@@ -108,6 +112,15 @@ def loadScores() -> list:
 def retrieveMatchStartTimes() -> list:
     """Return (match number, start timestamp) for the latest start of each match."""
     return _run(_retrieveMatchStartTimes)
+
+
+def loadSelectedMatch() -> Optional[int]:
+    """Return the match number last selected with a MatchSelected event, or None if there is none."""
+    saved = _run(_getMeta, SELECTED_MATCH_META_KEY)
+    try:
+        return int(saved) if saved is not None else None
+    except ValueError:
+        return None
 
 
 def getMeta(key: str) -> Optional[str]:

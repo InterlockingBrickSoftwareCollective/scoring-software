@@ -63,6 +63,17 @@ def test_deleting_a_team_deletes_its_scores(database):
     assert scores(substrate) == {(7, 1): (60, None)}
 
 
+def test_selected_match_survives_a_relaunch(database):
+    assert Substrate.loadSelectedMatch() is None
+
+    Events.publish(Events.MatchSelected(4))
+    Events.publish(Events.MatchSelected(5))
+
+    substrate = database()
+
+    assert substrate.loadSelectedMatch() == 5
+
+
 def test_new_database_has_current_schema_version(database, tmp_path):
     (dbFile,) = tmp_path.glob("*.db")
     with sqlite3.connect(dbFile) as db:
