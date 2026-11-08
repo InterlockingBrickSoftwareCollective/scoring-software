@@ -48,6 +48,11 @@ MAX_TEAM_NAME_BYTES = 200
 MAX_SCORE = 1000000
 MAX_SCORESHEET_TASKS = 500
 MAX_SCORESHEET_STRING_BYTES = 64
+MAX_MATCH_START_MATCH = 99999
+MAX_MATCH_STARTS = 1000
+# Match starts outside these years (as seconds since the epoch) come from a broken clock
+EARLIEST_MATCH_START = datetime(2000, 1, 1, tzinfo=UTC).timestamp()
+LATEST_MATCH_START = datetime(2200, 1, 1, tzinfo=UTC).timestamp()
 
 # Match statuses that are about one match; the others are event-wide and report match 0
 MATCH_STATUSES = ("preparing", "running", "scoring")
@@ -430,6 +435,9 @@ class SyncEngine:
         self._matchStatus = None  # (match, status), or None until there is one or it's cleared
         self._matchStatusCleared = False  # The operator cleared it; send that, and keep it clear
         self._selectedMatch = None  # The match number the operator has selected, once known
+        # Match number -> when its timer last started, in seconds since the epoch. Starts go out
+        # with their match's status, and every start with each full-state snapshot.
+        self._matchStarts = {}
         # Changes not yet sent, oldest first: key -> generation of its latest change. A key is
         # "teams", "match", or (number, round). The request for a key is built from the data
         # when it's sent, so it's always current.
@@ -465,12 +473,19 @@ class SyncEngine:
 
     # Control, called from the UI thread
 
-    def load(self, teams: list, scores: list):
-        """Set the local data the engine starts from: Substrate.TeamEntry and ScoreEntry lists."""
+    def load(self, teams: list, scores: list, matchStarts: list = ()):
+        """Set the local data the engine starts from: Substrate.TeamEntry and ScoreEntry lists,
+        and (match, timestamp) pairs from Substrate.retrieveMatchStartTimes()."""
         with self._cond:
             self._teams = {int(t.teamnumber): (str(t.name), int(t.pit)) for t in teams}
             self._rounds = {(int(s.teamnumber), int(s.round)): (int(s.score), s.scoresheet)
                             for s in scores if int(s.teamnumber) in self._teams}
+            self._matchStarts = {}
+            for match, timestamp in matchStarts:
+                try:
+                    self._recordMatchStart(int(match), float(timestamp))
+                except (TypeError, ValueError):
+                    pass  # Not a match start the score reflector could take
 
     def start(self):
         """Start syncing. Raises SyncConfigError if the sync file's certificates can't be used."""
@@ -614,7 +629,43 @@ class SyncEngine:
         self._publishStatus()
 
     def _onMatchStarted(self, event):
+        with self._cond:
+            self._recordMatchStart(int(event.match), float(event.at))
         self.setMatchStatus(event.match, "running")
+
+    def _recordMatchStart(self, match: int, timestamp: float):
+        # Like the cycle time report, keep each match's latest start
+        if match in self._matchStarts and self._matchStarts[match] >= timestamp:
+            return
+        self._matchStarts[match] = timestamp
+
+    def _matchStartBody(self, match: int) -> Optional[str]:
+        """When the match last started, as the API wants it, or None if it hasn't (sendably)."""
+        timestamp = self._matchStarts.get(match)
+        if timestamp is None or not 1 <= match <= MAX_MATCH_START_MATCH \
+                or not EARLIEST_MATCH_START <= timestamp < LATEST_MATCH_START:
+            return None
+        return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def _matchStatusBody(self) -> dict:
+        match, status = self._matchStatus
+        body = {"match": match, "status": status}
+        if status in MATCH_STATUSES:
+            # Sent with every status for the match, so it isn't lost if the status moves on
+            # before it goes out
+            startedAt = self._matchStartBody(match)
+            if startedAt is not None:
+                body["startedAt"] = startedAt
+        return body
+
+    def _matchStartsBody(self) -> list:
+        starts = []
+        for match in sorted(self._matchStarts):
+            startedAt = self._matchStartBody(match)
+            if startedAt is not None:
+                starts.append({"match": match, "startedAt": startedAt})
+        # The latest matches, if there are ever more than the score reflector takes
+        return starts[-MAX_MATCH_STARTS:]
 
     def _onMatchAborted(self, event):
         # The match will be run again
@@ -856,8 +907,8 @@ class SyncEngine:
 
         matchStatus = None
         if self._matchStatus is not None:
-            matchStatus = {"match": self._matchStatus[0], "status": self._matchStatus[1]}
-        snapshot = {"matchStatus": matchStatus, "teams": teams}
+            matchStatus = self._matchStatusBody()
+        snapshot = {"matchStatus": matchStatus, "teams": teams, "matchStarts": self._matchStartsBody()}
         return snapshot, Removals(frozenset(removedTeams), frozenset(removedScores))
 
     def _scoreBody(self, number: int, roundNum: int, problems: list) -> Optional[dict]:
@@ -1033,7 +1084,7 @@ class SyncEngine:
         if key == "match":
             if self._matchStatus is None:
                 return "DELETE", "/match-status", None
-            return "PUT", "/match-status", {"match": self._matchStatus[0], "status": self._matchStatus[1]}
+            return "PUT", "/match-status", self._matchStatusBody()
         number, roundNum = key
         path = f"/teams/{number}/rounds/{roundNum}"
         if (number, roundNum) not in self._rounds:
@@ -1159,5 +1210,5 @@ def createEngine(config: SyncConfig, **kwargs) -> SyncEngine:
     import Substrate
 
     engine = SyncEngine(config, **kwargs)
-    engine.load(Substrate.loadTeams(), Substrate.loadScores())
+    engine.load(Substrate.loadTeams(), Substrate.loadScores(), Substrate.retrieveMatchStartTimes())
     return engine

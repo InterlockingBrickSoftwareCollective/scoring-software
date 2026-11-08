@@ -52,14 +52,14 @@ def teamsOn(reflector):
 class Harness:
     """A sync engine attached to a fake score reflector, recording what it tells the operator."""
 
-    def __init__(self, reflector, teams=(), scores=()):
+    def __init__(self, reflector, teams=(), scores=(), matchStarts=()):
         self.reflector = reflector
         self.statuses = []
         self.removalPrompts = []
         self.engine = SyncEngine(SyncConfig.parse(json.dumps(syncFile())), reflector=reflector,
                                  onStatus=self.statuses.append, onRemovals=self.removalPrompts.append,
                                  retryDelays=(0.05,), finalizedPollSeconds=0.1)
-        self.engine.load(list(teams), list(scores))
+        self.engine.load(list(teams), list(scores), list(matchStarts))
 
     def start(self):
         self.engine.start()
@@ -89,8 +89,8 @@ def reflector():
 def harness(reflector):
     harnesses = []
 
-    def make(teams=(), scores=()):
-        h = Harness(reflector, teams, scores)
+    def make(teams=(), scores=(), matchStarts=()):
+        h = Harness(reflector, teams, scores, matchStarts)
         harnesses.append(h)
         return h
 
@@ -327,6 +327,81 @@ def test_changes_made_while_offline_are_delivered_on_reconnect(harness, reflecto
     assert teamsOn(reflector)[42][2] == [180, None, None]
     assert reflector.state()["matchStatus"] == {"match": 2, "status": "running"}
     assert h.engine.status.pending == 0
+
+
+# Match starts, for the score reflector's cycle time report
+
+# 2026-11-01 14:00:00 UTC, and a fraction of a second, which isn't sent
+START = datetime(2026, 11, 1, 14, 0, tzinfo=UTC).timestamp() + 0.25
+
+
+def startsOn(reflector):
+    return {s["match"]: s["startedAt"] for s in reflector.state()["matchStarts"]}
+
+
+def test_a_match_start_goes_with_every_status_for_its_match(harness, reflector):
+    h = harness().start()
+    h.waitUntilSynced()
+    Events.publish(Events.MatchStarted(4, START))
+    waitFor(lambda: startsOn(reflector) == {4: "2026-11-01T14:00:00Z"})
+    assert reflector.state()["matchStatus"] == {"match": 4, "status": "running"}
+
+    completeMatch(4)
+    h.waitUntilSynced()
+    sent = [body for method, path, body in reflector.requests if path == "/match-status"]
+    assert {"match": 4, "status": "scoring", "startedAt": "2026-11-01T14:00:00Z"} in sent
+    # The next match hasn't started
+    Events.publish(Events.MatchSelected(5))
+    h.engine.setMatchStatus(5, "preparing")
+    h.waitUntilSynced()
+    assert reflector.requests[-1] == ("PUT", "/match-status", {"match": 5, "status": "preparing"})
+
+
+def test_an_event_wide_status_has_no_start(harness, reflector):
+    h = harness(matchStarts=[("4", START)]).start()
+    h.waitUntilSynced()
+    h.engine.setMatchStatus(0, "closing_ceremonies")
+    h.waitUntilSynced()
+    assert reflector.requests[-1] == ("PUT", "/match-status", {"match": 0, "status": "closing_ceremonies"})
+
+
+def test_a_match_started_again_reports_its_latest_start(harness, reflector):
+    h = harness().start()
+    h.waitUntilSynced()
+    Events.publish(Events.MatchStarted(4, START))
+    Events.publish(Events.MatchAborted(4))
+    Events.publish(Events.MatchStarted(4, START + 60))
+    waitFor(lambda: startsOn(reflector) == {4: "2026-11-01T14:01:00Z"})
+
+
+def test_match_starts_missed_while_offline_are_caught_up_on_reconnect(harness, reflector):
+    h = harness(teams=[TeamEntry("Bricks", 42, 3)]).start()
+    h.waitUntilSynced()
+    Events.publish(Events.MatchStarted(1, START))
+    waitFor(lambda: startsOn(reflector) == {1: "2026-11-01T14:00:00Z"})
+
+    reflector.offline = True
+    Events.publish(Events.ScoreUpdated(42, 1, 180))
+    waitFor(lambda: h.engine.status.state == SyncState.OFFLINE)
+    # Only the latest match status is queued, so match 2's start only reaches the score
+    # reflector with the snapshot
+    for match in (2, 3):
+        Events.publish(Events.MatchStarted(match, START + match * 480))
+        completeMatch(match)
+
+    reflector.offline = False
+    h.waitUntilSynced()
+    assert startsOn(reflector) == {1: "2026-11-01T14:00:00Z", 2: "2026-11-01T14:16:00Z", 3: "2026-11-01T14:24:00Z"}
+
+
+def test_match_starts_from_the_database_are_sent_on_startup(harness, reflector):
+    loaded = [("1", START), ("2", START + 425), ("practice", START), ("0", START), ("3", 12.5)]
+    h = harness(matchStarts=loaded).start()
+    h.waitUntilSynced()
+    assert startsOn(reflector) == {1: "2026-11-01T14:00:00Z", 2: "2026-11-01T14:07:05Z"}
+    put = [body for method, path, body in reflector.requests if (method, path) == ("PUT", "/state")]
+    assert put[-1]["matchStarts"] == [{"match": 1, "startedAt": "2026-11-01T14:00:00Z"},
+                                      {"match": 2, "startedAt": "2026-11-01T14:07:05Z"}]
 
 
 def test_the_latest_value_wins_when_changes_pile_up(harness, reflector):

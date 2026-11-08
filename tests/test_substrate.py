@@ -63,6 +63,19 @@ def test_deleting_a_team_deletes_its_scores(database):
     assert scores(substrate) == {(7, 1): (60, None)}
 
 
+def test_match_starts_are_logged_at_the_time_the_timer_started(database):
+    Events.publish(Events.MatchStarted(2, 1762005600.5))
+    Events.publish(Events.MatchStarted(1, 1762005000.0))
+    Events.publish(Events.MatchStarted(2, 1762006000.25))
+    Events.publish(Events.MatchStarted(3))
+
+    substrate = database()
+
+    starts = substrate.retrieveMatchStartTimes()
+    assert starts[:2] == [("1", 1762005000.0), ("2", 1762006000.25)]
+    assert starts[2][0] == "3" and starts[2][1] > 1762006000
+
+
 def test_new_database_has_current_schema_version(database, tmp_path):
     (dbFile,) = tmp_path.glob("*.db")
     with sqlite3.connect(dbFile) as db:

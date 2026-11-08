@@ -86,7 +86,7 @@ def init():
     Events.subscribe(Events.TeamDeleted, lambda e: _write(_deleteTeam, e.number))
     Events.subscribe(Events.ScoreUpdated, lambda e: _write(_saveScore, e.teamNumber, e.round, e.score, e.scoresheet))
     Events.subscribe(Events.ScoreCleared, lambda e: _write(_clearScore, e.teamNumber, e.round))
-    Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
+    Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}", e.at))
 
 
 def deinit():
@@ -354,8 +354,9 @@ def _copyDatabase(excludeMeta: list) -> bytes:
         copy.close()
 
 
-def _writeLogEntry(tag: str, message: str):
-    timestamp = datetime.now().timestamp()
+def _writeLogEntry(tag: str, message: str, timestamp: Optional[float] = None):
+    if timestamp is None:
+        timestamp = datetime.now().timestamp()
     _cur.execute("INSERT INTO log VALUES (?, ?, ?)", (timestamp, tag, message))
     _db.commit()
 

@@ -17,9 +17,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+import time
 import traceback
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 
@@ -79,6 +80,8 @@ class MatchSelected(Event):
 @dataclass(frozen=True)
 class MatchStarted(Event):
     match: int
+    # When the match's timer started, in seconds since the epoch
+    at: float = field(default_factory=time.time)
 
 
 @dataclass(frozen=True)

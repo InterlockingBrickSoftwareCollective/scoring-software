@@ -2,6 +2,7 @@
 
 import copy
 import hashlib
+import re
 import threading
 
 from Sync import ConnectionFailed, ReflectorError
@@ -12,6 +13,7 @@ class FakeReflector:
         self.lock = threading.Lock()
         self.revision = 0
         self.matchStatus = None
+        self.matchStarts = {}      # match -> startedAt, the latest start sent for each match
         self.teams = {}            # number -> {"name", "pit", "rounds": [score body or None] * 3}
         self.offline = False       # Requests fail as if the network were down
         self.rejectCertificate = False
@@ -33,6 +35,7 @@ class FakeReflector:
             "matchStatus": copy.deepcopy(self.matchStatus),
             "teams": [{"number": n, "name": t["name"], "pit": t["pit"], "rounds": copy.deepcopy(t["rounds"])}
                       for n, t in sorted(self.teams.items())],
+            "matchStarts": [{"match": m, "startedAt": s} for m, s in sorted(self.matchStarts.items())],
         }
 
     def seed(self, number, name, pit=0, rounds=(None, None, None)):
@@ -100,9 +103,13 @@ class FakeReflector:
             if method == "PUT" and parts == ["state"]:
                 return self._putState(body)
             if method == "PUT" and parts == ["match-status"]:
-                self._matchStatus(body)
-                return {"revision": self._write(lambda: setattr(self, "matchStatus", dict(body)),
-                                                self.matchStatus != body)}
+                status, starts = self._matchStatus(body)
+                starts = self._newStarts(starts)
+
+                def apply():
+                    self.matchStatus = status
+                    self.matchStarts.update(starts)
+                return {"revision": self._write(apply, self.matchStatus != status or bool(starts))}
             if method == "DELETE" and parts == ["match-status"]:
                 return {"revision": self._write(lambda: setattr(self, "matchStatus", None),
                                                 self.matchStatus is not None)}
@@ -133,11 +140,29 @@ class FakeReflector:
             raise ReflectorError(400, "invalid_request", message)
 
     def _matchStatus(self, m):
-        self._check(set(m) == {"match", "status"})
+        """The match status without its start, and the start as a list of match starts."""
+        self._check(set(m) in ({"match", "status"}, {"match", "status", "startedAt"}))
         if m["status"] in ("preparing", "running", "scoring"):
             self._check(m["match"] >= 1)
         else:
             self._check(m["status"] in ("practice", "opening_ceremonies", "closing_ceremonies") and m["match"] == 0)
+            self._check("startedAt" not in m)
+        starts = [{"match": m["match"], "startedAt": m["startedAt"]}] if "startedAt" in m else []
+        return {"match": m["match"], "status": m["status"]}, self._matchStarts(starts)
+
+    def _matchStarts(self, starts):
+        self._check(len(starts) <= 1000)
+        for s in starts:
+            self._check(set(s) == {"match", "startedAt"} and 1 <= s["match"] <= 99999)
+            self._check(re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", s["startedAt"]) is not None)
+            self._check("2000" <= s["startedAt"] < "2200")
+        self._check(len({s["match"] for s in starts}) == len(starts))
+        return starts
+
+    def _newStarts(self, starts):
+        """The starts that are new or later than the ones the server has."""
+        return {s["match"]: s["startedAt"] for s in starts
+                if s["startedAt"] > self.matchStarts.get(s["match"], "")}
 
     def _team(self, t):
         self._check(set(t) <= {"number", "name", "pit", "rounds"})
@@ -173,7 +198,7 @@ class FakeReflector:
         return {"revision": self._write(lambda: setattr(self, "teams", new), new != self.teams)}
 
     def _putState(self, body):
-        self._check(set(body) <= {"baseRevision", "allowRemovals", "matchStatus", "teams"})
+        self._check(set(body) <= {"baseRevision", "allowRemovals", "matchStatus", "teams", "matchStarts"})
         if body["baseRevision"] != self.revision:
             raise ReflectorError(409, "revision_mismatch", "the event has changed",
                                  {"currentRevision": self.revision})
@@ -183,11 +208,16 @@ class FakeReflector:
         rounds = {t["number"]: [self._score(r) if r else None for r in t["rounds"]] for t in body["teams"]}
         self._removals(set(rounds), body.get("allowRemovals", False), rounds)
         new = {t["number"]: {"name": t["name"], "pit": t["pit"], "rounds": rounds[t["number"]]} for t in body["teams"]}
+        starts = self._matchStarts(body.get("matchStarts") or [])
+        match = self.matchStatus
         if body["matchStatus"] is not None:
-            self._matchStatus(body["matchStatus"])
-        match = body["matchStatus"] if body["matchStatus"] is not None else self.matchStatus
+            match, statusStarts = self._matchStatus(body["matchStatus"])
+            starts = starts + statusStarts
+        starts = self._newStarts(starts)
 
         def apply():
             self.teams = new
             self.matchStatus = match
-        return {"revision": self._write(apply, new != self.teams or match != self.matchStatus), "changes": {}}
+            self.matchStarts.update(starts)
+        changed = new != self.teams or match != self.matchStatus or bool(starts)
+        return {"revision": self._write(apply, changed), "changes": {}}
