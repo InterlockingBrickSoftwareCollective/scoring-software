@@ -443,6 +443,9 @@ class SyncEngine:
         self._matchStatus = None  # (match, status), or None until there is one or it's cleared
         self._matchStatusCleared = False  # The operator cleared it; send that, and keep it clear
         self._selectedMatch = None  # The match number the operator has selected, once known
+        # Match number -> when its timer last started, in seconds since the epoch. A start goes out
+        # with its match's running status, and every start with each full-state snapshot.
+        self._matchStarts = {}
         # Changes not yet sent, oldest first: key -> generation of its latest change. A key is
         # "teams", "match", or (number, round). The request for a key is built from the data
         # when it's sent, so it's always current.
@@ -478,12 +481,14 @@ class SyncEngine:
 
     # Control, called from the UI thread
 
-    def load(self, teams: list, scores: list):
-        """Set the local data the engine starts from: Substrate.TeamEntry and ScoreEntry lists."""
+    def load(self, teams: list, scores: list, matchStarts: list = ()):
+        """Set the local data the engine starts from: Substrate.TeamEntry and ScoreEntry lists,
+        and (match, timestamp) pairs from Substrate.retrieveMatchStartTimes()."""
         with self._cond:
             self._teams = {int(t.teamnumber): (str(t.name), int(t.pit)) for t in teams}
             self._rounds = {(int(s.teamnumber), int(s.round)): (int(s.score), s.scoresheet)
                             for s in scores if int(s.teamnumber) in self._teams}
+            self._matchStarts = {int(match): float(timestamp) for match, timestamp in matchStarts}
 
     def start(self):
         """Start syncing. Raises SyncConfigError if the sync file's certificates can't be used."""
@@ -627,7 +632,20 @@ class SyncEngine:
         self._publishStatus()
 
     def _onMatchStarted(self, event):
+        with self._cond:
+            self._matchStarts[event.match] = event.at
         self.setMatchStatus(event.match, "running")
+
+    def _matchStatusBody(self) -> dict:
+        match, status = self._matchStatus
+        body = {"match": match, "status": status}
+        if status == "running" and match in self._matchStarts:
+            body["startedAt"] = _timestampBody(self._matchStarts[match])
+        return body
+
+    def _matchStartsBody(self) -> list:
+        return [{"match": match, "startedAt": _timestampBody(timestamp)}
+                for match, timestamp in sorted(self._matchStarts.items())]
 
     def _onMatchAborted(self, event):
         # The match will be run again
@@ -869,8 +887,8 @@ class SyncEngine:
 
         matchStatus = None
         if self._matchStatus is not None:
-            matchStatus = {"match": self._matchStatus[0], "status": self._matchStatus[1]}
-        snapshot = {"matchStatus": matchStatus, "teams": teams}
+            matchStatus = self._matchStatusBody()
+        snapshot = {"matchStatus": matchStatus, "teams": teams, "matchStarts": self._matchStartsBody()}
         return snapshot, Removals(frozenset(removedTeams), frozenset(removedScores))
 
     def _scoreBody(self, number: int, roundNum: int, problems: list) -> Optional[dict]:
@@ -1046,7 +1064,7 @@ class SyncEngine:
         if key == "match":
             if self._matchStatus is None:
                 return "DELETE", "/match-status", None
-            return "PUT", "/match-status", {"match": self._matchStatus[0], "status": self._matchStatus[1]}
+            return "PUT", "/match-status", self._matchStatusBody()
         number, roundNum = key
         path = f"/teams/{number}/rounds/{roundNum}"
         if (number, roundNum) not in self._rounds:
@@ -1151,6 +1169,10 @@ def _parseServerTimestamp(text) -> Optional[datetime]:
         return None
 
 
+def _timestampBody(timestamp: float) -> str:
+    return datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _describeRemovals(removals: Removals) -> str:
     parts = []
     if removals.teams:
@@ -1172,5 +1194,5 @@ def createEngine(config: SyncConfig, **kwargs) -> SyncEngine:
     import Substrate
 
     engine = SyncEngine(config, **kwargs)
-    engine.load(Substrate.loadTeams(), Substrate.loadScores())
+    engine.load(Substrate.loadTeams(), Substrate.loadScores(), Substrate.retrieveMatchStartTimes())
     return engine
