@@ -30,6 +30,7 @@ import CycleTimeReport
 import Events
 import ResourceManager
 import Substrate
+import SystemInventory
 import TeamCsv
 import Timer
 
@@ -147,6 +148,7 @@ class MainWindow(QMainWindow):
             self.setWindowTitle("Scoring Display")
 
             Substrate.init()
+            SystemInventory.start()
 
             # Find size of monitor and launch app
             screen = QGuiApplication.primaryScreen().geometry()
@@ -445,6 +447,7 @@ class MainWindow(QMainWindow):
 
             if confirm == QMessageBox.StandardButton.Yes:
                 self.sync.shutdown()
+                SystemInventory.stop()
                 Substrate.deinit()
 
                 if self.insertWindow is not None:
