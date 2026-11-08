@@ -262,6 +262,7 @@ class ScoresheetDialog(QMainWindow):
         Qt handler for keyboard events.
         Enter enables keyboard mode, or calculates if already enabled.
         Numeric keys (0-9) select options in the current task when in keyboard mode.
+        Backspace clears the previous task's answer and moves back to it in keyboard mode.
 
         Also reached directly (not via eventFilter) when no child widget has
         focus, e.g. on macOS where combo boxes and buttons don't take focus.
@@ -281,6 +282,12 @@ class ScoresheetDialog(QMainWindow):
                         # Advance to the next task before repainting, so the indicator line moves
                         self.current_task_index += 1
                         self.update_image()
+            case Qt.Key.Key_Backspace if self.keyboard_mode_enabled:
+                # Step back to the previous task and clear its answer, to re-enter it
+                if self.current_task_index > 0:
+                    self.current_task_index -= 1
+                    self.game.tasks[self.current_task_index].selected = None
+                    self.update_image()
             case _:
                 super().keyPressEvent(event)
 
@@ -293,10 +300,10 @@ class ScoresheetDialog(QMainWindow):
         if event.type() == event.Type.KeyPress:
             key = event.key()
             is_enter = key in (Qt.Key.Key_Return, Qt.Key.Key_Enter)
-            is_digit = Qt.Key.Key_0 <= key <= Qt.Key.Key_9
+            is_entry = Qt.Key.Key_0 <= key <= Qt.Key.Key_9 or key == Qt.Key.Key_Backspace
 
-            # Always intercept Enter; intercept numeric keys only in keyboard mode
-            if is_enter or (self.keyboard_mode_enabled and is_digit):
+            # Always intercept Enter; intercept numeric keys and Backspace only in keyboard mode
+            if is_enter or (self.keyboard_mode_enabled and is_entry):
                 self.keyPressEvent(event)
                 return True  # Event handled, don't pass to widget
 
