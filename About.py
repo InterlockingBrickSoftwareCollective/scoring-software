@@ -26,7 +26,7 @@ from PyQt6.QtWidgets import *
 import ResourceManager
 
 licenseText = """
-<p style="margin-bottom: 1em">Copyright © 2024-2025 Interlocking Brick Software Collective.</p>
+<p style="margin-bottom: 1em">Copyright © 2024-2026 Interlocking Brick Software Collective.</p>
 <p style="margin-bottom: 1em">Interlocking Brick Scoring Software is free software: you can redistribute it and/or modify it under the terms of version 3 of the GNU General Public License as published by the Free Software Foundation.</p>
 <p style="margin-bottom: 1em">Interlocking Brick Scoring Software is distributed in the hope that it will be useful, but <b>WITHOUT ANY WARRANTY</b>; without even the <b>implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE</b>. See the <a href="https://www.gnu.org/licenses/gpl-3.0.txt">GNU General Public License</a> for more details.</p>
 
