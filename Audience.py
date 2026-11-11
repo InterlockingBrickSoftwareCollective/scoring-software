@@ -74,6 +74,9 @@ SOUNDS = {
 
 
 class AudienceWindow(QMainWindow):
+    # Emitted whenever the window enters or leaves fullscreen, however that happened
+    fullScreenChanged = pyqtSignal(bool)
+
     def __init__(self, parent):
         super().__init__()
 
@@ -223,8 +226,30 @@ class AudienceWindow(QMainWindow):
             # Resume scrolling for rankings display
             self.scroll.scroll.resume()
 
+    def setFullScreen(self, fullScreen: bool):
+        """Fill the monitor the window is currently on, or restore the previous size and position."""
+        if fullScreen == self.isFullScreen():
+            return
+        if fullScreen:
+            self.showFullScreen()
+        else:
+            self.showNormal()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key.Key_F11:
+            self.setFullScreen(not self.isFullScreen())
+        elif event.key() == Qt.Key.Key_Escape and self.isFullScreen():
+            self.setFullScreen(False)
+        else:
+            super().keyPressEvent(event)
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            self.fullScreenChanged.emit(self.isFullScreen())
+
     def showTime(self, event):
-        clock = self.practiceClock if event.practice else self.matchClock
+        clock =self.practiceClock if event.practice else self.matchClock
         clock.showTime(event.remaining)
 
     def testSound(self):

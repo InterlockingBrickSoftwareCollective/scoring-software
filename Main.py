@@ -204,7 +204,11 @@ class MainWindow(QMainWindow):
             self.rankingsTop.triggered.connect(self.audienceDisplay.scrollToTop)
             self.testAudio = QAction("Test Sound")
             self.testAudio.triggered.connect(self.audienceDisplay.testSound)
-            self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio])
+            self.fullScreen = QAction("Full Screen", checkable=True)
+            self.fullScreen.toggled.connect(self.audienceDisplay.setFullScreen)
+            # Keep the checkmark in sync when F11/Esc are pressed on the audience window
+            self.audienceDisplay.fullScreenChanged.connect(self.fullScreen.setChecked)
+            self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio, self.fullScreen])
 
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
