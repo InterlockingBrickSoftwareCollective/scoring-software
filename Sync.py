@@ -142,6 +142,14 @@ class SyncConfig:
         """Host (and port, if not the default) of the score reflector, for showing to the operator."""
         return urlsplit(self.syncUrl).netloc
 
+    @property
+    def scoresSiteUrl(self) -> str:
+        """The public scores site, which is on the sync API's host without its "api." prefix."""
+        netloc = urlsplit(self.syncUrl).netloc
+        if netloc.lower().startswith("api."):
+            netloc = netloc[len("api."):]
+        return f"https://{netloc}"
+
     def isExpired(self, now: Optional[datetime] = None) -> bool:
         return (now or datetime.now(UTC)) >= self.expiresAt
 

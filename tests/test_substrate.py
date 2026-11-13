@@ -74,6 +74,16 @@ def test_selected_match_survives_a_relaunch(database):
     assert substrate.loadSelectedMatch() == 5
 
 
+def test_audience_source_survives_a_relaunch(database):
+    assert Substrate.loadAudienceSource() is None
+
+    Events.publish(Events.AudienceSourceChanged("pit"))
+
+    substrate = database()
+
+    assert substrate.loadAudienceSource() == "pit"
+
+
 def test_new_database_has_current_schema_version(database, tmp_path):
     (dbFile,) = tmp_path.glob("*.db")
     with sqlite3.connect(dbFile) as db:

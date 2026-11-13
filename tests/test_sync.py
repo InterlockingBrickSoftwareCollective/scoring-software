@@ -110,6 +110,16 @@ def test_sync_file_round_trips_through_its_saved_form():
     assert SyncConfig.parse(config.toJson()) == config
 
 
+@pytest.mark.parametrize("syncUrl, siteUrl", [
+    ("https://api.scores.example.org/api/v1/events/fall-qual", "https://scores.example.org"),
+    ("https://API.scores.example.org:8443/api/v1/events/x", "https://scores.example.org:8443"),
+    ("https://scores.example.org/api/v1/events/fall-qual", "https://scores.example.org"),
+])
+def test_scores_site_is_the_sync_host_without_the_api_prefix(syncUrl, siteUrl):
+    config = SyncConfig.parse(json.dumps(syncFile(syncUrl=syncUrl)))
+    assert config.scoresSiteUrl == siteUrl
+
+
 @pytest.mark.parametrize("overrides", [
     {"format": "something-else"},
     {"version": 2},

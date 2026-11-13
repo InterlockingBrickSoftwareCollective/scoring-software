@@ -59,6 +59,8 @@ class SyncController(QObject):
     # Emitted on the UI thread whenever there's something new to show; the argument is a
     # SyncStatus, or None when sync isn't set up
     statusChanged = pyqtSignal(object)
+    # The operator removed sync, as opposed to it stopping or failing to start
+    removed = pyqtSignal()
     # Engine callbacks arrive on the engine's thread; these carry them to the UI thread
     _engineStatus = pyqtSignal(object, object)
     _engineRemovals = pyqtSignal(object, object)
@@ -332,6 +334,7 @@ class SyncController(QObject):
         self._stop()
         Sync.removeConfig()
         self.statusChanged.emit(None)
+        self.removed.emit()
 
     def showDetails(self):
         """Show what sync is doing, with a way to sync now."""

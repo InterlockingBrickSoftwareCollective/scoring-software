@@ -26,8 +26,10 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
 import About
+import Audience
 import CycleTimeReport
 import Events
+import PitDisplay
 import ResourceManager
 import Substrate
 import SystemInventory
@@ -35,7 +37,7 @@ import TeamCsv
 import Timer
 
 from AddWindow import AddWindow
-from Audience import AudienceWindow
+from Audience import AudienceSourceMenu, AudienceWindow
 from CustomWidgets import ScoreBubble, fitRankLabel
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
@@ -277,9 +279,14 @@ class MainWindow(QMainWindow):
             self.removeSyncAction = QAction("Remove sync...", self)
             self.removeSyncAction.triggered.connect(self.sync.remove)
             self.eventStatusMenu = EventStatusMenu(self.sync, self.matchNum.value, self)
+            # Shows and hides itself as the pit display page comes and goes with sync
+            self.audienceSourceMenu = AudienceSourceMenu(self.audienceDisplay, self)
             self.toyboxMenu.addActions([setUpSyncAction, self.syncNowAction, self.eventStatusMenu.menuAction(),
-                                        self.removeSyncAction])
+                                        self.audienceSourceMenu.menuAction(), self.removeSyncAction])
             self.sync.statusChanged.connect(self.updateSyncActions)
+            self.sync.statusChanged.connect(self.updatePitDisplayUrl)
+            # Forget the choice of the pit display when sync is removed, but not when it merely couldn't start
+            self.sync.removed.connect(lambda: self.audienceDisplay.setSource(Audience.LOCAL))
             self.syncStatusButton = SyncStatusButton(self.sync)
             self.finalizeButton = FinalizeEventButton(self.sync)
 
@@ -339,6 +346,8 @@ class MainWindow(QMainWindow):
             self.rerank()
             self.show()
 
+            # Before sync starts, so the cloud pit display shows as soon as its page is known
+            self.audienceDisplay.setSource(Substrate.loadAudienceSource() or Audience.LOCAL)
             self.sync.startFromSavedConfig()
 
             # Render audience window, then bring focus back to main scoring window
@@ -358,6 +367,11 @@ class MainWindow(QMainWindow):
         self.syncNowAction.setVisible(configured)
         self.removeSyncAction.setVisible(configured)
         self.eventStatusMenu.menuAction().setVisible(configured)
+
+    def updatePitDisplayUrl(self, status):
+        config = self.sync.config
+        available = config is not None and PitDisplay.isAvailable()
+        self.audienceDisplay.setPitDisplayUrl(PitDisplay.pitDisplayUrl(config) if available else None)
 
     def showCycleTimeReport(self):
         CycleTimeReport.show(self)

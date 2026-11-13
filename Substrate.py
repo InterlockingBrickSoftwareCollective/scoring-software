@@ -55,6 +55,9 @@ _cur = None
 # Meta table key holding the match number the operator last selected
 SELECTED_MATCH_META_KEY = "match.selected"
 
+# Meta table key holding what the audience display shows when it isn't showing a timer
+AUDIENCE_SOURCE_META_KEY = "audience.source"
+
 # All database access happens on a single dedicated thread, which keeps slow
 # disk writes off the UI thread and satisfies SQLite's requirement that a
 # connection only be used from the thread that created it. Work runs in the
@@ -91,6 +94,7 @@ def init():
     Events.subscribe(Events.ScoreCleared, lambda e: _write(_clearScore, e.teamNumber, e.round))
     Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
     Events.subscribe(Events.MatchSelected, lambda e: _write(_setMeta, SELECTED_MATCH_META_KEY, str(e.match)))
+    Events.subscribe(Events.AudienceSourceChanged, lambda e: _write(_setMeta, AUDIENCE_SOURCE_META_KEY, e.source))
 
 
 def deinit():
@@ -121,6 +125,11 @@ def loadSelectedMatch() -> Optional[int]:
         return int(saved) if saved is not None else None
     except ValueError:
         return None
+
+
+def loadAudienceSource() -> Optional[str]:
+    """Return the audience display source last published with an AudienceSourceChanged event, or None if there is none."""
+    return _run(_getMeta, AUDIENCE_SOURCE_META_KEY)
 
 
 def getMeta(key: str) -> Optional[str]:

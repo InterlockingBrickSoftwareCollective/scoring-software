@@ -139,6 +139,11 @@ def _cleanupResources():
             _temp_resource_dir = None
 
 
+def getAppDataPath() -> str:
+    """Get the platform-specific per-user data directory, which also holds the resource pack."""
+    return _getResourcePackPath()
+
+
 def _getResourcePackPath() -> str:
     """Get the platform-specific path for the resource pack directory."""
     system = platform.system()

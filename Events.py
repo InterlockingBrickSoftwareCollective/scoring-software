@@ -77,6 +77,13 @@ class MatchSelected(Event):
 
 
 @dataclass(frozen=True)
+class AudienceSourceChanged(Event):
+    """The audience display now shows the local rankings ("local") or the cloud pit display ("pit")
+    when it isn't showing a timer."""
+    source: str
+
+
+@dataclass(frozen=True)
 class MatchStarted(Event):
     match: int
 

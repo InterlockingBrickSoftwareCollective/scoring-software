@@ -25,10 +25,15 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import *
 
 import Events
+import PitDisplay
 import ResourceManager
 import Timer
 from CustomWidgets import CustomScroll, fitRankLabel
 from Team import UNRANKED
+
+# What the audience display shows when it isn't showing a timer
+LOCAL = "local"  # The local rankings
+PIT = "pit"      # The score reflector's pit display
 
 # The audience display always uses light colors, even when the system is in dark mode,
 # so every color is set here rather than coming from the system palette
@@ -76,6 +81,11 @@ SOUNDS = {
 class AudienceWindow(QMainWindow):
     # Emitted whenever the window enters or leaves fullscreen, however that happened
     fullScreenChanged = pyqtSignal(bool)
+    # The source or the pit display page changed
+    sourceChanged = pyqtSignal()
+    # The cloud pit display couldn't start, so the source is back to the local rankings;
+    # the reason is suitable for the operator
+    pitDisplayFailed = pyqtSignal(str)
 
     def __init__(self, parent):
         super().__init__()
@@ -83,6 +93,8 @@ class AudienceWindow(QMainWindow):
         self.dlg = None
         self.parent = parent
         self.mode = "ranks"
+        self.source = LOCAL
+        self.pitUrl = None  # The cloud pit display page, while there is one
 
         try:
             self.setWindowTitle("Audience Display")
@@ -124,8 +136,16 @@ class AudienceWindow(QMainWindow):
             # Inhibit user scrolling
             self.scroll.verticalScrollBar().setEnabled(False)
 
+            self.pitView = PitDisplay.PitView()
+            self.pitView.failed.connect(self.onPitDisplayFailed)
+            self.pitView.keyPressed.connect(self.handleFullScreenKey)
+
+            self.stack = QStackedWidget()
+            self.stack.addWidget(self.scroll)
+            self.stack.addWidget(self.pitView)
+
             self.mainLayout = QGridLayout()
-            self.mainLayout.addWidget(self.scroll, 0, 0, 1, 7)
+            self.mainLayout.addWidget(self.stack, 0, 0, 1, 7)
 
             self.mainWidget = QWidget()
             self.mainWidget.setLayout(self.mainLayout)
@@ -134,7 +154,7 @@ class AudienceWindow(QMainWindow):
             self.setStyleSheet(sheet)
 
             # Set initial scroller state based on mode
-            self.updateScrollerState()
+            self.updateDisplayState()
 
         except Exception as err:
             print(err)
@@ -206,7 +226,33 @@ class AudienceWindow(QMainWindow):
         self.mode = mode
         self.clearTeamWidgets()
         self.loadWidgets()
-        self.updateScrollerState()
+        self.updateDisplayState()
+
+    def setSource(self, source: str):
+        """Show the local rankings (LOCAL) or the cloud pit display (PIT) when no timer is showing.
+        The cloud pit display needs a page, set with setPitDisplayUrl(); without one, the local rankings show."""
+        source = PIT if source == PIT else LOCAL
+        if source == self.source:
+            return
+        self.source = source
+        Events.publish(Events.AudienceSourceChanged(source))
+        self.updateDisplayState()
+        self.sourceChanged.emit()
+
+    def setPitDisplayUrl(self, url):
+        """Set the cloud pit display page, or None when there isn't one (e.g. sync isn't set up)."""
+        if url == self.pitUrl:
+            return
+        self.pitUrl = url
+        self.updateDisplayState()
+        self.sourceChanged.emit()
+
+    def isShowingPitDisplay(self) -> bool:
+        return self.source == PIT and self.pitUrl is not None
+
+    def onPitDisplayFailed(self, problem: str):
+        self.setSource(LOCAL)
+        self.pitDisplayFailed.emit(problem)
 
     def rerank(self):
         self.clearTeamWidgets()
@@ -215,10 +261,16 @@ class AudienceWindow(QMainWindow):
     def scrollToTop(self):
         self.scroll.verticalScrollBar().setValue(0)
 
-    def updateScrollerState(self):
-        """Control auto-scrolling based on display mode"""
-        if self.mode in ("match_timer", "practice_timer"):
-            # Pause scrolling for timer displays
+    def updateDisplayState(self):
+        """Show the cloud pit display or the local page, and control auto-scrolling, based on display mode"""
+        if self.isShowingPitDisplay():
+            # Keep the page loaded while a timer shows, so it's ready afterwards
+            self.pitView.setUrl(self.pitUrl)
+        showPit = self.mode == "ranks" and self.isShowingPitDisplay()
+        self.stack.setCurrentWidget(self.pitView if showPit else self.scroll)
+
+        if self.mode in ("match_timer", "practice_timer") or showPit:
+            # Pause scrolling for timer displays and while the local rankings are hidden
             self.scroll.scroll.pause()
             # Reset scroll position to top
             self.scroll.verticalScrollBar().setValue(0)
@@ -237,11 +289,18 @@ class AudienceWindow(QMainWindow):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_F11:
-            self.setFullScreen(not self.isFullScreen())
+            self.handleFullScreenKey("F11")
         elif event.key() == Qt.Key.Key_Escape and self.isFullScreen():
-            self.setFullScreen(False)
+            self.handleFullScreenKey("Escape")
         else:
             super().keyPressEvent(event)
+
+    def handleFullScreenKey(self, key: str):
+        """F11 toggles fullscreen and Escape leaves it, whether pressed here or on the cloud pit display."""
+        if key == "F11":
+            self.setFullScreen(not self.isFullScreen())
+        elif key == "Escape":
+            self.setFullScreen(False)
 
     def changeEvent(self, event):
         super().changeEvent(event)
@@ -260,6 +319,42 @@ class AudienceWindow(QMainWindow):
             self.mediaPlayer.setSource(getMediaUrl(sound))
             self.mediaPlayer.setPosition(0)
             self.mediaPlayer.play()
+
+
+class AudienceSourceMenu(QMenu):
+    """Toybox > Audience display: whether the audience display shows the local rankings or the
+    score reflector's pit display. Only offered while there's a pit display page (sync is set up, on Windows)."""
+
+    def __init__(self, audience: AudienceWindow, parent: QWidget):
+        super().__init__("Audience display", parent)
+        self._audience = audience
+        self._window = parent
+        group = QActionGroup(self)
+
+        def add(label, source):
+            action = self.addAction(label)
+            action.setCheckable(True)
+            group.addAction(action)
+            action.triggered.connect(lambda checked: audience.setSource(source))
+            return action
+
+        self._local = add("Local rankings", LOCAL)
+        self._pit = add("Cloud pit display", PIT)
+
+        audience.sourceChanged.connect(self._update)
+        audience.pitDisplayFailed.connect(self._onFailed)
+        self._update()
+
+    def _update(self):
+        self.menuAction().setVisible(self._audience.pitUrl is not None)
+        (self._pit if self._audience.source == PIT else self._local).setChecked(True)
+
+    def _onFailed(self, problem: str):
+        QMessageBox.warning(
+            self._window, "Cloud Pit Display",
+            "The cloud pit display couldn't start, so the audience display is showing the local rankings.\n\n"
+            "It needs the Microsoft Edge WebView2 Runtime, which comes with Windows 11.\n\n"
+            f"Details: {problem}")
 
 
 class ClockFace(QWidget):
