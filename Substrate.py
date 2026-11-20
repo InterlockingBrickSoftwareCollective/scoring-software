@@ -55,6 +55,15 @@ _cur = None
 # Meta table key holding the match number the operator last selected
 SELECTED_MATCH_META_KEY = "match.selected"
 
+# Meta table keys holding whether the themed audience display is on ("on" or "off"),
+# and the event name and date it shows
+AUDIENCE_THEME_META_KEY = "audience.theme"
+EVENT_NAME_META_KEY = "audience.eventName"
+EVENT_DATE_META_KEY = "audience.eventDate"
+
+# Meta table key holding whether to show the time of day after practice ends ("on" or "off")
+CLOCK_AFTER_PRACTICE_META_KEY = "audience.clockAfterPractice"
+
 # All database access happens on a single dedicated thread, which keeps slow
 # disk writes off the UI thread and satisfies SQLite's requirement that a
 # connection only be used from the thread that created it. Work runs in the
@@ -91,6 +100,11 @@ def init():
     Events.subscribe(Events.ScoreCleared, lambda e: _write(_clearScore, e.teamNumber, e.round))
     Events.subscribe(Events.MatchStarted, lambda e: _write(_writeLogEntry, "match_start", f"{e.match}"))
     Events.subscribe(Events.MatchSelected, lambda e: _write(_setMeta, SELECTED_MATCH_META_KEY, str(e.match)))
+    Events.subscribe(Events.AudienceThemeChanged,
+                     lambda e: _write(_setMeta, AUDIENCE_THEME_META_KEY, "on" if e.enabled else "off"))
+    Events.subscribe(Events.EventInfoChanged, lambda e: _write(_setEventInfo, e.name, e.date))
+    Events.subscribe(Events.ClockAfterPracticeChanged,
+                     lambda e: _write(_setMeta, CLOCK_AFTER_PRACTICE_META_KEY, "on" if e.enabled else "off"))
 
 
 def deinit():
@@ -121,6 +135,23 @@ def loadSelectedMatch() -> Optional[int]:
         return int(saved) if saved is not None else None
     except ValueError:
         return None
+
+
+def loadAudienceTheme() -> Optional[bool]:
+    """Return whether the themed audience display was last turned on with an AudienceThemeChanged
+    event, or None if the operator hasn't chosen."""
+    saved = _run(_getMeta, AUDIENCE_THEME_META_KEY)
+    return None if saved is None else saved == "on"
+
+
+def loadEventInfo() -> tuple:
+    """Return the (name, date) last set with an EventInfoChanged event, as empty strings if never set."""
+    return _run(_getMeta, EVENT_NAME_META_KEY) or "", _run(_getMeta, EVENT_DATE_META_KEY) or ""
+
+
+def loadClockAfterPractice() -> bool:
+    """Return whether to show the time of day after practice ends (on unless turned off)."""
+    return _run(_getMeta, CLOCK_AFTER_PRACTICE_META_KEY) != "off"
 
 
 def getMeta(key: str) -> Optional[str]:
@@ -344,6 +375,11 @@ def _setMeta(key: str, value: str):
     _cur.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (key, value))
     # Only the key is audited: values may be secrets (e.g., the sync client key)
     _writeAuditEntry("meta_update", {"key": key})
+
+
+def _setEventInfo(name: str, date: str):
+    _setMeta(EVENT_NAME_META_KEY, name)
+    _setMeta(EVENT_DATE_META_KEY, date)
 
 
 def _deleteMeta(key: str):

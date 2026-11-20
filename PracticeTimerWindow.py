@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import *
 from PyQt6.QtCore import QTime
 
 import Events
+import Substrate
 import Timer
 
 class PracticeTimerWindow(QMainWindow):
@@ -48,11 +49,17 @@ class PracticeTimerWindow(QMainWindow):
         self.warningTimeWidget.setFixedWidth(70)
         self.warningTimeLayout.addWidget(self.warningTimeWidget)
 
+        # After a practice session, the audience display can show the time of day
+        self.clockAfterCheck = QCheckBox("Show the current time when practice ends")
+        self.clockAfterCheck.setChecked(Substrate.loadClockAfterPractice())
+        self.clockAfterCheck.toggled.connect(lambda checked: Events.publish(Events.ClockAfterPracticeChanged(checked)))
+
         self.startStopBtn = QPushButton("Start Practice Timer")
         self.startStopBtn.pressed.connect(self.handleStartStop)
 
         self.mainLayout.addLayout(self.practiceTimeLayout)
         self.mainLayout.addLayout(self.warningTimeLayout)
+        self.mainLayout.addWidget(self.clockAfterCheck)
         self.mainLayout.addWidget(self.startStopBtn)
         self.mainWidget.setLayout(self.mainLayout)
         self.setCentralWidget(self.mainWidget)

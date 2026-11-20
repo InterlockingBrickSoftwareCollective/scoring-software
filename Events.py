@@ -77,6 +77,26 @@ class MatchSelected(Event):
 
 
 @dataclass(frozen=True)
+class AudienceThemeChanged(Event):
+    """The operator turned the resource pack's themed audience display on or off."""
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class EventInfoChanged(Event):
+    """The operator set the event name and date shown on the themed audience display.
+    An empty name means to use the score reflector's event name, if sync is set up."""
+    name: str
+    date: str
+
+
+@dataclass(frozen=True)
+class ClockAfterPracticeChanged(Event):
+    """The operator chose whether the audience display shows the time of day after practice ends."""
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class MatchStarted(Event):
     match: int
 
