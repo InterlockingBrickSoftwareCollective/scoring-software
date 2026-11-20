@@ -385,6 +385,8 @@ class MainWindow(QMainWindow):
             self.updateEventInfo()
             self.updateTimerControls()
             self.sync.statusChanged.connect(lambda status: self.updateEventInfo())
+            self.sync.statusChanged.connect(lambda status: self.updateResultsUrl())
+            self.updateResultsUrl()
             self.sync.startFromSavedConfig()
 
             # Render audience window, then bring focus back to main scoring window
@@ -412,6 +414,11 @@ class MainWindow(QMainWindow):
         """Show the saved event name (or the score reflector's) and date on the themed display."""
         name, date = Substrate.loadEventInfo()
         self.audienceDisplay.setEventInfo(effectiveEventName(name, self.syncEventName()), date)
+
+    def updateResultsUrl(self):
+        """Show the score reflector's results page as a QR code on the welcome screen while sync is set up."""
+        config = self.sync.config
+        self.audienceDisplay.setResultsUrl(config.resultsUrl if config is not None else None)
 
     def editEventInfo(self):
         name, date = Substrate.loadEventInfo()

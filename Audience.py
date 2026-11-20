@@ -35,7 +35,7 @@ from Team import UNRANKED
 
 # What the audience display shows (its mode)
 RANKS = "ranks"                    # The rankings: local or themed standings
-WELCOME = "welcome"                # The themed welcome screen (only with a theme)
+WELCOME = "welcome"                # The welcome loop: the welcome screen and the standings (only with a theme)
 CLOCK = "clock"                    # The time of day
 MATCH_TIMER = "match_timer"
 PRACTICE_TIMER = "practice_timer"
@@ -268,7 +268,7 @@ class AudienceWindow(QMainWindow):
         return self.themeEnabled and self.themed is not None and self.themed.hasWelcome()
 
     def setMode(self, mode: str):
-        """Show the rankings (RANKS), the welcome screen (WELCOME), the time of day (CLOCK),
+        """Show the rankings (RANKS), the welcome loop (WELCOME), the time of day (CLOCK),
         the match timer (MATCH_TIMER), or the practice timer (PRACTICE_TIMER)."""
         if mode == WELCOME and not self.canShowWelcome():
             mode = RANKS
@@ -373,6 +373,11 @@ class AudienceWindow(QMainWindow):
             title = f"Match {self.matchNumber}" if self.matchNumber is not None else "Match"
         self.themed.showTimer(title, state.remaining, state.total, state.warning, state.expired)
 
+    def setResultsUrl(self, url):
+        """The event results page, whose QR code the welcome screen shows, or None for none."""
+        if self.themed is not None:
+            self.themed.setResultsUrl(url)
+
     def setEventInfo(self, name: str, date: str):
         """The event name and date the themed screens show."""
         if self.themed is not None:
@@ -416,7 +421,7 @@ class AudienceWindow(QMainWindow):
         elif showThemedClock:
             self.themed.showClock(datetime.now())
         elif showWelcome:
-            self.themed.showWelcome()
+            self.themed.start(welcome=True)
         elif showTheme:
             self.themed.start()
         elif self.themed is not None:

@@ -40,6 +40,8 @@ from PyQt6.QtGui import QColor, QFont, QFontDatabase, QFontMetricsF, QPainter, Q
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import QWidget
 
+import segno
+
 import ResourceManager
 from Team import UNRANKED
 
@@ -53,6 +55,8 @@ SUPPORTED_THEME_VERSION = 1
 
 # Rotation through the standings pages, shown in place of the local rankings
 STANDINGS_PAGE_SECONDS = 8
+# The welcome loop shows the welcome screen this long, then every standings page
+WELCOME_SECONDS = 15
 
 NO_SCORE = "—"
 
@@ -109,7 +113,8 @@ class Theme:
         return name in self.screens
 
     def build(self, screen: str, values: Optional[dict] = None, hidden=(), shown=(),
-              attributes: Optional[dict] = None, dots: Optional[tuple] = None, only=None) -> bytes:
+              attributes: Optional[dict] = None, dots: Optional[tuple] = None, only=None,
+              results: Optional[str] = None) -> bytes:
         """Fill in a screen's template and return the SVG document.
 
         values: field id -> text. Elements with id "<field>__<suffix>" get the same text.
@@ -117,7 +122,8 @@ class Theme:
         attributes: element id -> {attribute: value} to set, e.g. a fill color.
         dots: (page, pages) to draw page dots in the screen's page_dots group.
         only: ids of top-level elements (and their "__" copies) to draw, leaving out everything
-        else, so a layer that changes often can be drawn over a cached one."""
+        else, so a layer that changes often can be drawn over a cached one.
+        results: the event results page, to show its QR code card if the screen has one."""
         spec = self.screens[screen]
         root = copy.deepcopy(self._templates[screen].getroot())
         index = _index(root)
@@ -149,6 +155,9 @@ class Theme:
 
         if dots is not None and "dots" in spec:
             self._drawDots(index, spec["dots"], *dots)
+
+        if results and "results" in spec:
+            self._drawResults(index, spec["results"], results)
 
         if only is not None:
             keep = {id(element) for field in only for element in _fieldGroup(index, field)}
@@ -256,6 +265,40 @@ class Theme:
                 state = "todo"
             ET.SubElement(group, f"{{{SVG_NS}}}circle", _strings(attrs), id=f"dot{n}", **{"class": state})
             x += size + gap
+
+
+    def _drawResults(self, index, spec: dict, url: str):
+        """Show the results card with the page's QR code, and make room for it."""
+        for element in index.get(spec["group"], []):
+            element.attrib.pop("display", None)
+        shift = spec.get("shift")
+        if shift:
+            for element in index.get(shift["id"], []):
+                _translate(element, float(shift["dy"]))
+        for group in index.get(spec["qr"], []):
+            path, modules = qrPath(url)
+            scale = float(spec["size"]) / modules
+            ET.SubElement(group, f"{{{SVG_NS}}}path", d=path, transform=f"scale({_formatNumber(scale)})")
+
+
+def qrPath(text: str) -> tuple:
+    """SVG path data for a QR code of text, one unit per module and no quiet zone (the template
+    leaves room for it), and its width in modules. Each run of dark modules is one rectangle,
+    a little taller than a module so rows don't show hairline gaps between them when drawn
+    with antialiasing."""
+    code = segno.make(text, error="m", micro=False)
+    parts = []
+    for y, row in enumerate(code.matrix):
+        x = 0
+        while x < len(row):
+            if row[x]:
+                start = x
+                while x < len(row) and row[x]:
+                    x += 1
+                parts.append(f"M{start} {y}h{x - start}v1.05h{start - x}z")
+            else:
+                x += 1
+    return "".join(parts), code.symbol_size(border=0)[0]
 
 
 def _index(root) -> dict:
@@ -676,8 +719,8 @@ class ThemedView(QWidget):
 
 
 class ThemedAudience(QObject):
-    """The themed audience display: rotates through the welcome screen and the standings
-    pages, or holds one screen shown with showScreen()."""
+    """The themed audience display: rotates through the standings pages (after the welcome
+    screen, in the welcome loop), or holds one screen shown with showScreen()."""
 
     def __init__(self, theme: Theme, teams: Callable[[], list], parent=None,
                  recent: Callable[[], list] = lambda: [], status: Callable[[], Optional[tuple]] = lambda: None):
@@ -688,12 +731,13 @@ class ThemedAudience(QObject):
         self._status = status  # The match status, (match, status) or None
         self.eventName = ""
         self.eventDate = ""
+        self.resultsUrl: Optional[str] = None  # The event results page, for the welcome screen's QR code
         self.view = ThemedView(theme.background, theme.width / theme.height)
         self._sequence: list = []
         self._position = 0
         self._held: Optional[tuple] = None  # (screen, build arguments) shown with showScreen()
         self._running = False
-        self._showingWelcome = False
+        self._welcome = False  # Whether the rotation starts with the welcome screen
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.advance)
@@ -704,9 +748,13 @@ class ThemedAudience(QObject):
 
     # Rotation
 
-    def start(self):
-        """Start (or keep) showing the rotation, or the held screen."""
-        self._showingWelcome = False
+    def start(self, welcome: bool = False):
+        """Start (or keep) showing the rotation, or the held screen. With welcome, the rotation
+        is the welcome loop: the welcome screen, then every standings page."""
+        if welcome != self._welcome:
+            self._welcome = welcome
+            self._timer.stop()
+            self._position = 0
         self._running = True
         if self._held is None:
             if not self._timer.isActive():
@@ -749,7 +797,7 @@ class ThemedAudience(QObject):
         self._showCurrent(rebuild=False)
 
     def currentScreen(self) -> Optional[tuple]:
-        """("standings", page) or ("held", screen) for what the rotation shows."""
+        """("welcome",), ("standings", page) or ("held", screen) for what the rotation shows."""
         if self._held is not None:
             return ("held", self._held[0])
         return self._sequence[self._position] if self._sequence else None
@@ -763,17 +811,10 @@ class ThemedAudience(QObject):
     def hasWelcome(self) -> bool:
         return self.theme.hasScreen("welcome")
 
-    def showWelcome(self):
-        """Show the welcome screen in place of the rotation (until start() is called again)."""
-        self.stop()
-        self._showingWelcome = True
-        self.view.setRenderer(self.theme.renderer("welcome", values=self._eventValues("welcome")))
-
     def showClock(self, now: datetime):
         """Show the time of day in place of the rotation (until start() is called again).
         Call every second so the colon blinks."""
         self.stop()
-        self._showingWelcome = False
         spec = self.theme.screens["clock"]["clock"]
         layer = [spec["group"]]
         if self.view.backgroundKey() != ("clock",):
@@ -784,7 +825,6 @@ class ThemedAudience(QObject):
     def showTimer(self, title: str, remaining: int, total: int, warning: bool, expired: bool = False):
         """Show the timer screen in place of the rotation (until start() is called again)."""
         self.stop()
-        self._showingWelcome = False
         args = timerScreen(self.theme, title, remaining, total, warning, expired)
         key = ("timer", title)
         if self.view.backgroundKey() != key:
@@ -795,9 +835,13 @@ class ThemedAudience(QObject):
     def setEventInfo(self, name: str, date: str):
         self.eventName = name or ""
         self.eventDate = date or ""
-        if self._showingWelcome:
-            self.showWelcome()
         self.refresh()
+
+    def setResultsUrl(self, url: Optional[str]):
+        """The event results page, whose QR code the welcome screen shows, or None for none."""
+        if url != self.resultsUrl:
+            self.resultsUrl = url
+            self.refresh()
 
     # Showing any screen (for the awards ceremony and announcements)
 
@@ -821,7 +865,7 @@ class ThemedAudience(QObject):
     # Internals
 
     def _buildSequence(self) -> list:
-        sequence = []
+        sequence = [("welcome",)] if self._welcome and self.hasWelcome() else []
         if self.theme.hasScreen("standings"):
             perPage = int(self.theme.screens["standings"].get("rows", 8))
             pages = standingsPageCount(len(self._teams()), perPage)
@@ -838,7 +882,8 @@ class ThemedAudience(QObject):
             self._startTimer(item)
 
     def _startTimer(self, item: tuple):
-        self._timer.start(STANDINGS_PAGE_SECONDS * 1000)
+        seconds = WELCOME_SECONDS if item[0] == "welcome" else STANDINGS_PAGE_SECONDS
+        self._timer.start(seconds * 1000)
 
     def _onMinute(self):
         if self._running and self._held is None:
@@ -853,6 +898,9 @@ class ThemedAudience(QObject):
                 self._minuteTimer.start((60 - now.second) * 1000 - now.microsecond // 1000 + 50)
             args["values"].update(self._eventValues("standings"))
             self.view.setRenderer(self.theme.renderer("standings", **args))
+        elif item[0] == "welcome":
+            self.view.setRenderer(self.theme.renderer("welcome", values=self._eventValues("welcome"),
+                                                      results=self.resultsUrl))
         else:
             self.view.setRenderer(None)
 

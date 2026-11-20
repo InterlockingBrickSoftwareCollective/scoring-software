@@ -491,13 +491,96 @@ def test_rotation_pages_through_the_standings_only(themed):
     assert themed._timer.interval() == ThemedDisplay.STANDINGS_PAGE_SECONDS * 1000
 
 
-def test_show_welcome_holds_until_the_rotation_starts(themed):
-    themed.setEventInfo("Fall Qualifier", "Oct 3")
-    themed.showWelcome()
-    assert not themed.isRunning()
-    themed.setEventInfo("Spring Qualifier", "")  # Shows the new name straight away
+def test_welcome_loop_shows_the_welcome_screen_then_every_page(themed):
+    themed.start(welcome=True)
+    seen = [themed.currentScreen()]
+    assert themed._timer.interval() == ThemedDisplay.WELCOME_SECONDS * 1000
+    intervals = []
+    for _ in range(3):
+        themed.advance()
+        seen.append(themed.currentScreen())
+        intervals.append(themed._timer.interval())
+    assert seen == [("welcome",), ("standings", 1), ("standings", 2), ("welcome",)]
+    assert intervals == [ThemedDisplay.STANDINGS_PAGE_SECONDS * 1000] * 2 + [ThemedDisplay.WELCOME_SECONDS * 1000]
+
+
+def test_rankings_never_show_the_welcome_screen(themed):
+    themed.start()
+    seen = [themed.currentScreen()]
+    for _ in range(4):
+        themed.advance()
+        seen.append(themed.currentScreen())
+    assert ("welcome",) not in seen
+
+
+def test_switching_to_the_welcome_loop_starts_at_the_welcome_screen(themed):
+    themed.start()
+    themed.advance()
+    assert themed.currentScreen() == ("standings", 2)
+    themed.start(welcome=True)
+    assert themed.currentScreen() == ("welcome",)
     themed.start()
     assert themed.currentScreen() == ("standings", 1)
+
+
+def test_welcome_loop_with_one_page_still_rotates(theme):
+    audience = ThemedDisplay.ThemedAudience(theme, lambda: makeTeams(3))
+    audience.start(welcome=True)
+    assert audience.currentScreen() == ("welcome",)
+    assert audience._timer.isActive()
+    audience.advance()
+    assert audience.currentScreen() == ("standings", 1)
+
+
+def test_welcome_screen_shows_new_event_info_straight_away(themed):
+    themed.start(welcome=True)
+    themed.setEventInfo("Spring Qualifier", "")
+    assert themed.currentScreen() == ("welcome",)
+    assert themed._timer.isActive()
+
+
+# The results QR code
+
+def qrMatrix(path: str, modules: int) -> list:
+    grid = [[False] * modules for _ in range(modules)]
+    for x, y, run in re.findall(r"M(\d+) (\d+)h(\d+)v1\.05h-\d+z", path):
+        for col in range(int(x), int(x) + int(run)):
+            grid[int(y)][col] = True
+    return grid
+
+
+def test_qr_path_draws_every_dark_module():
+    url = "https://scores.example.org/events/fall-qual"
+    path, modules = ThemedDisplay.qrPath(url)
+    code = ThemedDisplay.segno.make(url, error="m", micro=False)
+    assert modules == code.symbol_size(border=0)[0]
+    assert qrMatrix(path, modules) == [[bool(m) for m in row] for row in code.matrix]
+
+
+def test_welcome_screen_hides_the_results_card_without_a_results_page(theme):
+    _, ids = parse(theme.build("welcome", values={"event_name": "Fall Qualifier"}))
+    assert ids["results"].get("display") == "none"
+    assert ids["welcome_text"].get("transform") is None
+    assert len(ids["results_qr"]) == 0
+
+
+def test_welcome_screen_shows_the_results_qr_code(theme):
+    _, ids = parse(theme.build("welcome", results="https://scores.example.org/events/fall-qual"))
+    assert ids["results"].get("display") is None
+    assert ids["welcome_text"].get("transform") == "translate(0 -50)"
+    path = list(ids["results_qr"])[0]
+    modules = ThemedDisplay.qrPath("https://scores.example.org/events/fall-qual")[1]
+    assert path.get("transform") == f"scale({ThemedDisplay._formatNumber(196 / modules)})"
+
+
+def test_results_page_change_redraws_the_welcome_screen(themed, monkeypatch):
+    built = []
+    real = themed.theme.renderer
+    monkeypatch.setattr(themed.theme, "renderer", lambda screen, **kw: built.append(kw) or real(screen, **kw))
+    themed.start(welcome=True)
+    themed.setResultsUrl("https://scores.example.org/events/fall-qual")
+    themed.setResultsUrl(None)
+    assert [kw.get("results") for kw in built] == [None, "https://scores.example.org/events/fall-qual", None]
 
 
 def test_a_single_screen_does_not_rotate(theme):

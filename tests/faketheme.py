@@ -21,11 +21,15 @@ def text(id, x, y, size, content, weight=400, anchor="middle", extra=""):
 
 
 WELCOME = (HEADER
+           + '<g id="welcome_text">'
            + text("welcome_eyebrow", 960, 372, 40, "WELCOME TO THE", 700)
            + text("event_name__glow", 960, 518, 128, "[EVENT NAME]", 900, extra='filter="url(#tg)"')
            + text("event_name", 960, 518, 128, "[EVENT NAME]", 900)
            + text("event_date", 960, 607, 44, "[DATE]", 300)
-           + "</svg>")
+           + '</g><g id="results" display="none"><rect x="620" y="748" width="680" height="276"/>'
+           + '<g id="results_qr" transform="translate(660 788)" fill="#003947"/>'
+           + text("results_title", 908, 868, 60, "Event results", 900, "start")
+           + "</g></svg>")
 
 ROWS = 8
 RECENT = 8
@@ -125,7 +129,9 @@ THEME = {
         "welcome": {"file": "welcome.svg", "fields": {
             "event_name": {"maxWidth": 1440, "minSize": 80, "maxLines": 2, "lineHeight": 1.0, "wrap": "center",
                            "above": ["welcome_eyebrow"], "below": ["event_date"]},
-            "event_date": {"maxWidth": 1440, "minSize": 28}}},
+            "event_date": {"maxWidth": 1440, "minSize": 28}},
+            "results": {"group": "results", "qr": "results_qr", "size": 196,
+                        "shift": {"id": "welcome_text", "dy": -50}}},
         "standings": {"file": "standings.svg", "rows": ROWS, "recent": RECENT,
                       "header": {"timeRight": 1385, "suffixGap": 10,
                                  "statusColors": {"preparing": ACCENT, "scoring": "#F0E973",

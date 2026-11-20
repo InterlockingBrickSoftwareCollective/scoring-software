@@ -258,10 +258,15 @@ def test_welcome_screen_shows_when_chosen(audience):
     audience.setThemeEnabled(True)
     audience.setMode(Audience.WELCOME)
     assert audience.mode == Audience.WELCOME and showing(audience) == "theme"
-    assert not audience.themed.isRunning()
+    assert audience.themed.isRunning() and audience.themed.currentScreen() == ("welcome",)
     assert modes == [Audience.WELCOME]
     audience.setMode(Audience.RANKS)
-    assert audience.themed.isRunning()
+    assert audience.themed.isRunning() and audience.themed.currentScreen() == ("standings", 1)
+
+
+def test_results_page_reaches_the_welcome_screen(audience):
+    audience.setResultsUrl("https://scores.example.org/events/fall-qual")
+    assert audience.themed.resultsUrl == "https://scores.example.org/events/fall-qual"
 
 
 def test_welcome_screen_needs_the_theme(audience, plain):
