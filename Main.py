@@ -26,8 +26,10 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
 import About
+import Audience
 import CycleTimeReport
 import Events
+import MatchStatus
 import ResourceManager
 import Substrate
 import SystemInventory
@@ -252,6 +254,7 @@ class MainWindow(QMainWindow):
             self.timerCtl.triggered.connect(self.handleTimerCtl)  # Starting a match also switches the audience display to the timer
 
             Timer.init()
+            MatchStatus.init()
             Events.subscribe(Events.MatchStarted, lambda event: self.chooseAudienceMode(Audience.MATCH_TIMER))
             Events.subscribe(Events.MatchAborted, lambda event: self.updateTimerControls())
             Events.subscribe(Events.MatchCompleted, self.onMatchCompleted)
@@ -400,7 +403,6 @@ class MainWindow(QMainWindow):
         configured = status is not None
         self.syncNowAction.setVisible(configured)
         self.removeSyncAction.setVisible(configured)
-        self.eventStatusMenu.menuAction().setVisible(configured)
 
     def syncEventName(self):
         config = self.sync.config
