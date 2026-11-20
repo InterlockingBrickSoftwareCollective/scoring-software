@@ -114,6 +114,8 @@ class AudienceWindow(QMainWindow):
         self.runningPractice = None  # Whether the running countdown is a practice session; None when idle
         # The latest scores entered since the program started, newest first, for the themed standings
         self.recentScores = []
+        # What's going on at the event (MatchStatus), for the themed standings
+        self.matchStatus = None
 
         try:
             self.setWindowTitle("Audience Display")
@@ -149,6 +151,7 @@ class AudienceWindow(QMainWindow):
             for endType in (Events.MatchAborted, Events.MatchCompleted, Events.PracticeEnded):
                 Events.subscribe(endType, self.onTimerEnded)
             Events.subscribe(Events.ScoreUpdated, self.onScoreUpdated)
+            Events.subscribe(Events.MatchStatusChanged, self.onMatchStatusChanged)
             Events.subscribe(Events.ScoreCleared, lambda event: self.forgetRecentScores(event.teamNumber, event.round))
             Events.subscribe(Events.TeamDeleted, lambda event: self.forgetRecentScores(event.number))
 
@@ -175,7 +178,8 @@ class AudienceWindow(QMainWindow):
 
             if self.theme is not None:
                 self.themed = ThemedDisplay.ThemedAudience(self.theme, lambda: self.parent.teams, self,
-                                                           recent=lambda: self.recentScores)
+                                                           recent=lambda: self.recentScores,
+                                                           status=lambda: self.matchStatus)
                 self.stack.addWidget(self.themed.view)
 
             self.mainLayout = QGridLayout()
@@ -317,6 +321,11 @@ class AudienceWindow(QMainWindow):
         self.forgetRecentScores(event.teamNumber, event.round)
         self.recentScores.insert(0, ThemedDisplay.RecentScore(event.teamNumber, event.round, event.score, time.time()))
         del self.recentScores[RECENT_SCORES:]
+
+    def onMatchStatusChanged(self, event):
+        self.matchStatus = (event.match, event.status) if event.status is not None else None
+        if self.themed is not None:
+            self.themed.refresh()
 
     def forgetRecentScores(self, team: int, round: int = None):
         """Drop a team's latest score for a round (or every round) that was cleared or deleted."""

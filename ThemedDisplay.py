@@ -406,13 +406,62 @@ def recentScores(theme: Theme, recent: list, now: float) -> dict:
     return {"values": values, "hidden": hidden, "shown": shown}
 
 
+# How the match status tile describes each status: (first line, second line)
+STATUS_TEXT = {
+    "preparing": ("Match {match}", "Setting up"),
+    "running": ("Match {match}", "In progress"),
+    "scoring": ("Match {match}", "Being scored"),
+    "practice": ("Practice", "Practice matches"),
+    "opening_ceremonies": ("Opening", "Ceremonies"),
+    "closing_ceremonies": ("Closing", "Ceremonies"),
+}
+
+
+def standingsHeader(theme: Theme, status: Optional[tuple], now: datetime) -> dict:
+    """Values and attributes for the standings header: the time of day (without a blinking colon)
+    and the match status tile, for status (match, status) or None ("Waiting")."""
+    spec = theme.screens["standings"].get("header")
+    values, hidden, shown, attributes = {}, [], [], {}
+    if not spec:
+        return {"values": values, "hidden": hidden, "shown": shown, "attributes": attributes}
+
+    hours, minutes, suffix = clockParts(now)
+    suffix += "m"
+    values["standings_time"] = f"{hours}:{minutes}"
+    values["standings_suffix"] = suffix
+    suffixWidth = theme.textWidth("standings", "standings_suffix", suffix)
+    attributes["standings_time"] = {"x": _formatNumber(float(spec["timeRight"]) - suffixWidth - float(spec.get("suffixGap", 8)))}
+
+    colors = spec.get("statusColors", {})
+    if status is None or status[1] not in STATUS_TEXT:
+        color = colors.get("waiting")
+        values["status_single"] = "Waiting"
+        hidden += ["status_title", "status_label"]
+        shown.append("status_single")
+    else:
+        match, name = status
+        first, second = STATUS_TEXT[name]
+        color = colors.get(name)
+        values["status_title"] = first.format(match=match)
+        values["status_label"] = second
+        shown += ["status_title", "status_label"]
+        hidden.append("status_single")
+        if color:
+            attributes["status_label"] = {"fill": color}
+    if color:
+        attributes["status_dot"] = {"fill": color}
+        attributes["status_dot__glow"] = {"fill": color}
+    return {"values": values, "hidden": hidden, "shown": shown, "attributes": attributes}
+
+
 def standingsPageCount(rowCount: int, rowsPerPage: int) -> int:
     return max(1, math.ceil(rowCount / rowsPerPage))
 
 
-def standingsPage(theme: Theme, rows: list, page: int, recent=(), now: Optional[float] = None) -> dict:
+def standingsPage(theme: Theme, rows: list, page: int, recent=(), now: Optional[float] = None,
+                  status: Optional[tuple] = None) -> dict:
     """build() arguments for one page (1-based) of the standings screen, with the latest
-    scores (newest first) if the theme shows them."""
+    scores (newest first) and the header's time of day and match status, if the theme shows them."""
     spec = theme.screens["standings"]
     perPage = int(spec.get("rows", 8))
     pages = standingsPageCount(len(rows), perPage)
@@ -441,10 +490,12 @@ def standingsPage(theme: Theme, rows: list, page: int, recent=(), now: Optional[
     else:
         hidden.append("page_label")
 
-    latest = recentScores(theme, list(recent), time.time() if now is None else now)
-    values.update(latest["values"])
-    hidden += latest["hidden"]
-    shown += latest["shown"]
+    now = time.time() if now is None else now
+    for extra in (recentScores(theme, list(recent), now), standingsHeader(theme, status, datetime.fromtimestamp(now))):
+        values.update(extra["values"])
+        hidden += extra["hidden"]
+        shown += extra["shown"]
+        attributes.update(extra.get("attributes", {}))
     return {"values": values, "hidden": hidden, "shown": shown, "attributes": attributes, "dots": (page, pages)}
 
 
@@ -629,11 +680,12 @@ class ThemedAudience(QObject):
     pages, or holds one screen shown with showScreen()."""
 
     def __init__(self, theme: Theme, teams: Callable[[], list], parent=None,
-                 recent: Callable[[], list] = lambda: []):
+                 recent: Callable[[], list] = lambda: [], status: Callable[[], Optional[tuple]] = lambda: None):
         super().__init__(parent)
         self.theme = theme
         self._teams = teams
         self._recent = recent  # Latest scores, newest first
+        self._status = status  # The match status, (match, status) or None
         self.eventName = ""
         self.eventDate = ""
         self.view = ThemedView(theme.background, theme.width / theme.height)
@@ -645,6 +697,10 @@ class ThemedAudience(QObject):
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self.advance)
+        # Redraws the standings when the minute changes, for the time of day in their header
+        self._minuteTimer = QTimer(self)
+        self._minuteTimer.setSingleShot(True)
+        self._minuteTimer.timeout.connect(self._onMinute)
 
     # Rotation
 
@@ -662,6 +718,7 @@ class ThemedAudience(QObject):
         """Stop changing screens, e.g. while a timer shows."""
         self._running = False
         self._timer.stop()
+        self._minuteTimer.stop()
 
     def isRunning(self) -> bool:
         return self._running
@@ -783,9 +840,17 @@ class ThemedAudience(QObject):
     def _startTimer(self, item: tuple):
         self._timer.start(STANDINGS_PAGE_SECONDS * 1000)
 
+    def _onMinute(self):
+        if self._running and self._held is None:
+            self._render(self._sequence[self._position])
+
     def _render(self, item: tuple):
         if item[0] == "standings":
-            args = standingsPage(self.theme, standingsRows(self._teams()), item[1], self._recent())
+            args = standingsPage(self.theme, standingsRows(self._teams()), item[1], self._recent(),
+                                 status=self._status())
+            if "header" in self.theme.screens["standings"]:
+                now = datetime.now()
+                self._minuteTimer.start((60 - now.second) * 1000 - now.microsecond // 1000 + 50)
             args["values"].update(self._eventValues("standings"))
             self.view.setRenderer(self.theme.renderer("standings", **args))
         else:

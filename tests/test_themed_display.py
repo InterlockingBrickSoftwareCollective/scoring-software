@@ -394,6 +394,54 @@ def test_only_first_place_can_be_accented(theme, tmp_path):
     assert page["attributes"]["row2_rank"]["fill"] == faketheme.WHITE
 
 
+# Standings header
+
+def test_standings_header_shows_the_time_without_blinking(theme):
+    header = ThemedDisplay.standingsHeader(theme, (12, "preparing"), datetime(2027, 1, 16, 14, 7, 31))
+    assert header["values"]["standings_time"] == "2:07"
+    assert header["values"]["standings_suffix"] == "pm"
+    # The time sits just left of "pm", which is right-aligned on timeRight
+    expected = 1385 - theme.textWidth("standings", "standings_suffix", "pm") - 10
+    assert float(header["attributes"]["standings_time"]["x"]) == pytest.approx(expected, abs=0.01)
+
+
+@pytest.mark.parametrize("status, title, label, color", [
+    ((12, "preparing"), "Match 12", "Setting up", faketheme.ACCENT),
+    ((12, "scoring"), "Match 12", "Being scored", "#F0E973"),
+    ((0, "opening_ceremonies"), "Opening", "Ceremonies", "#D59CD6"),
+    ((0, "closing_ceremonies"), "Closing", "Ceremonies", "#D59CD6"),
+])
+def test_match_status_tile(theme, status, title, label, color):
+    header = ThemedDisplay.standingsHeader(theme, status, datetime(2027, 1, 16, 9, 0))
+    assert header["values"]["status_title"] == title and header["values"]["status_label"] == label
+    assert header["attributes"]["status_dot"]["fill"] == color
+    assert header["attributes"]["status_label"]["fill"] == color
+    assert "status_single" in header["hidden"]
+
+
+def test_match_status_tile_waits_without_a_status(theme):
+    header = ThemedDisplay.standingsHeader(theme, None, datetime(2027, 1, 16, 9, 0))
+    assert header["values"]["status_single"] == "Waiting"
+    assert {"status_title", "status_label"} <= set(header["hidden"]) and "status_single" in header["shown"]
+    assert header["attributes"]["status_dot"]["fill"] == "#7F92A5"
+
+
+def test_standings_page_includes_the_header(theme):
+    page = ThemedDisplay.standingsPage(theme, ThemedDisplay.standingsRows(makeTeams(3)), 1, status=(4, "scoring"),
+                                       now=datetime(2027, 1, 16, 10, 5).timestamp())
+    _, ids = parse(theme.build("standings", **page))
+    assert ids["standings_time"].text == "10:05" and ids["standings_suffix"].text == "am"
+    assert ids["status_title"].text == "Match 4" and ids["status_label"].text == "Being scored"
+
+
+def test_standings_redraw_each_minute(themed):
+    themed.start()
+    assert themed._minuteTimer.isActive()
+    assert themed._minuteTimer.remainingTime() <= 60_100
+    themed.stop()
+    assert not themed._minuteTimer.isActive()
+
+
 # Advancing teams
 
 def test_a_few_advancing_teams_make_one_centered_column(theme):

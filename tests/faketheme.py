@@ -53,7 +53,14 @@ def standingsSvg():
                       + text(f"recent{n}_detail", 1432, top + 70, 22, "Round [N]", 400, "start")
                       + text(f"recent{n}_score", 1808, top + 54, 52, "[SCORE]", 900, "end")
                       + "</g>")
-    return (HEADER + "".join(rows) + "".join(recent)
+    header = (text("standings_time", 1328, 125, 60, "10:05", 900, "end")
+              + text("standings_suffix", 1385, 125, 36, "am", 900, "end")
+              + '<circle id="status_dot__glow" cx="1485" cy="106" r="12" fill="#22D8C2"/>'
+              + '<circle id="status_dot" cx="1485" cy="106" r="12" fill="#22D8C2"/>'
+              + text("status_title", 1519, 105, 40, "Match [N]", 900, "start")
+              + text("status_label", 1519, 137, 26, "Setting up", 700, "start")
+              + text("status_single", 1519, 120, 40, "Waiting", 900, "start", 'display="none"'))
+    return (HEADER + header + "".join(rows) + "".join(recent)
             + text("recent_empty", 1620, 550, 26, "No scores yet", 400, extra='display="none"')
             + '<g id="page_dots"/>'
             + text("page_label", 960, 1010, 24, "PAGE 1 OF 1", 700) + "</svg>")
@@ -120,6 +127,10 @@ THEME = {
                            "above": ["welcome_eyebrow"], "below": ["event_date"]},
             "event_date": {"maxWidth": 1440, "minSize": 28}}},
         "standings": {"file": "standings.svg", "rows": ROWS, "recent": RECENT,
+                      "header": {"timeRight": 1385, "suffixGap": 10,
+                                 "statusColors": {"preparing": ACCENT, "scoring": "#F0E973",
+                                                  "opening_ceremonies": "#D59CD6", "closing_ceremonies": "#D59CD6",
+                                                  "waiting": "#7F92A5"}},
                       "dots": {"centerX": 960, "centerY": 965, "size": 16, "activeWidth": 56, "gap": 14,
                                "activeFill": ACCENT, "doneFill": "#C6DE94", "doneOpacity": 0.6,
                                "todoStroke": "#C6DE94", "todoOpacity": 0.6, "todoStrokeWidth": 2, "max": 12},

@@ -332,3 +332,18 @@ def test_clock_after_practice_setting_is_saved(database):
     assert Substrate.loadClockAfterPractice() is True
     Events.publish(Events.ClockAfterPracticeChanged(False))
     assert database().loadClockAfterPractice() is False
+
+
+# Match status
+
+def test_match_status_reaches_the_standings(audience, monkeypatch):
+    audience.setThemeEnabled(True)
+    built = []
+    original = audience.theme.build
+    monkeypatch.setattr(audience.theme, "build", lambda screen, **kw: built.append(kw) or original(screen, **kw))
+    Events.publish(Events.MatchStatusChanged(9, "preparing"))
+    assert audience.matchStatus == (9, "preparing")
+    assert built[-1]["values"]["status_title"] == "Match 9"
+    Events.publish(Events.MatchStatusChanged(0, None))
+    assert audience.matchStatus is None
+    assert built[-1]["values"]["status_single"] == "Waiting"

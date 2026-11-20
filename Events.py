@@ -97,6 +97,15 @@ class ClockAfterPracticeChanged(Event):
 
 
 @dataclass(frozen=True)
+class MatchStatusChanged(Event):
+    """What's going on at the event changed (see MatchStatus): status is one of
+    MatchStatus.MATCH_STATUSES for a match, one of MatchStatus.EVENT_STATUSES with match 0,
+    or None when there's no status."""
+    match: int
+    status: Optional[str]
+
+
+@dataclass(frozen=True)
 class MatchStarted(Event):
     match: int
 
