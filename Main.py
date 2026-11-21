@@ -26,17 +26,21 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 
 import About
+import Audience
 import CycleTimeReport
 import Events
+import MatchStatus
 import ResourceManager
 import Substrate
 import SystemInventory
 import TeamCsv
+import ThemedDisplay
 import Timer
 
 from AddWindow import AddWindow
 from Audience import AudienceWindow
 from CustomWidgets import ScoreBubble, fitRankLabel
+from EventInfoDialog import EventInfoDialog, effectiveEventName
 from Insert import Insert
 from PracticeTimerWindow import PracticeTimerWindow
 from SyncControl import EventStatusMenu, FinalizeEventButton, SyncController, SyncStatusButton
@@ -136,6 +140,16 @@ def themeColors():
     return LIGHT_COLORS
 
 
+# Audience Display Options > Show: what the audience display shows
+SHOW_CHOICES = [
+    ("Rankings", Audience.RANKS),
+    ("Welcome Screen", Audience.WELCOME),
+    ("Current Time", Audience.CLOCK),
+    ("Match Timer", Audience.MATCH_TIMER),
+    ("Practice Timer", Audience.PRACTICE_TIMER),
+]
+
+
 class MainWindow(QMainWindow):
     scoresEntered = 0
     sortByRank = True
@@ -210,6 +224,29 @@ class MainWindow(QMainWindow):
             self.audienceDisplay.fullScreenChanged.connect(self.fullScreen.setChecked)
             self.audienceMenu.addActions([practiceTimer, self.rankingsTop, self.testAudio, self.fullScreen])
 
+            # Show: one choice for what the audience display shows
+            self.audienceMenu.addSection("Show")
+            self.showGroup = QActionGroup(self)
+            self.showActions = {}
+            for label, mode in SHOW_CHOICES:
+                action = QAction(label, self, checkable=True)
+                action.triggered.connect(lambda checked, mode=mode: self.chooseAudienceMode(mode))
+                self.showGroup.addAction(action)
+                self.audienceMenu.addAction(action)
+                self.showActions[mode] = action
+            self.audienceDisplay.modeChanged.connect(lambda mode: self.updateTimerControls())
+            self.audienceDisplay.themeChanged.connect(lambda enabled: self.updateTimerControls())
+
+            # Themed screens from the resource pack, offered only when the pack has them
+            if self.audienceDisplay.hasTheme():
+                self.audienceMenu.addSeparator()
+                self.themeAction = QAction(f"{self.audienceDisplay.theme.name} Theme", checkable=True)
+                self.themeAction.toggled.connect(self.audienceDisplay.setThemeEnabled)
+                self.audienceDisplay.themeChanged.connect(self.themeAction.setChecked)
+                eventInfoAction = QAction("Event Name and Date...")
+                eventInfoAction.triggered.connect(self.editEventInfo)
+                self.audienceMenu.addActions([self.themeAction, eventInfoAction])
+
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
             self.timerMode.triggered.connect(self.changeMode)
@@ -217,10 +254,12 @@ class MainWindow(QMainWindow):
             self.timerCtl.triggered.connect(self.handleTimerCtl)  # Starting a match also switches the audience display to the timer
 
             Timer.init()
-            Events.subscribe(Events.MatchStarted, lambda event: self.setAudienceMode("match_timer"))
+            MatchStatus.init()
+            Events.subscribe(Events.MatchStarted, lambda event: self.chooseAudienceMode(Audience.MATCH_TIMER))
             Events.subscribe(Events.MatchAborted, lambda event: self.updateTimerControls())
             Events.subscribe(Events.MatchCompleted, self.onMatchCompleted)
-            Events.subscribe(Events.PracticeStarted, lambda event: self.setAudienceMode("practice_timer"))
+            Events.subscribe(Events.PracticeStarted, lambda event: self.chooseAudienceMode(Audience.PRACTICE_TIMER))
+            Events.subscribe(Events.PracticeEnded, self.onPracticeEnded)
 
             self.menuBar().addAction(self.insert)
             if self.scoresheet:
@@ -240,6 +279,7 @@ class MainWindow(QMainWindow):
             self.matchNum.setMinimum(1)
             self.matchNum.setFixedWidth(60)
             self.restoreMatchNumber()  # Before connecting, so restoring doesn't count as a new selection
+            self.audienceDisplay.setMatchNumber(self.matchNum.value())
             self.matchNum.valueChanged.connect(self.updateMatchNumber)
 
             # Scores inputted counter
@@ -339,6 +379,14 @@ class MainWindow(QMainWindow):
             self.rerank()
             self.show()
 
+            # The themed display is on unless the operator turned it off
+            themeEnabled = Substrate.loadAudienceTheme()
+            self.audienceDisplay.setThemeEnabled(True if themeEnabled is None else themeEnabled)
+            self.updateEventInfo()
+            self.updateTimerControls()
+            self.sync.statusChanged.connect(lambda status: self.updateEventInfo())
+            self.sync.statusChanged.connect(lambda status: self.updateResultsUrl())
+            self.updateResultsUrl()
             self.sync.startFromSavedConfig()
 
             # Render audience window, then bring focus back to main scoring window
@@ -357,7 +405,27 @@ class MainWindow(QMainWindow):
         configured = status is not None
         self.syncNowAction.setVisible(configured)
         self.removeSyncAction.setVisible(configured)
-        self.eventStatusMenu.menuAction().setVisible(configured)
+
+    def syncEventName(self):
+        config = self.sync.config
+        return config.eventName if config is not None else None
+
+    def updateEventInfo(self):
+        """Show the saved event name (or the score reflector's) and date on the themed display."""
+        name, date = Substrate.loadEventInfo()
+        self.audienceDisplay.setEventInfo(effectiveEventName(name, self.syncEventName()), date)
+
+    def updateResultsUrl(self):
+        """Show the score reflector's results page as a QR code on the welcome screen while sync is set up."""
+        config = self.sync.config
+        self.audienceDisplay.setResultsUrl(config.resultsUrl if config is not None else None)
+
+    def editEventInfo(self):
+        name, date = Substrate.loadEventInfo()
+        dialog = EventInfoDialog(self, name, date, self.syncEventName())
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            Events.publish(Events.EventInfoChanged(dialog.name(), dialog.date()))
+            self.audienceDisplay.setEventInfo(effectiveEventName(dialog.name(), self.syncEventName()), dialog.date())
 
     def showCycleTimeReport(self):
         CycleTimeReport.show(self)
@@ -736,7 +804,11 @@ class MainWindow(QMainWindow):
             print(err)
 
     def changeMode(self):
-        self.setAudienceMode("match_timer" if self.audienceDisplay.mode == "ranks" else "ranks")
+        self.chooseAudienceMode(Audience.MATCH_TIMER if self.audienceDisplay.mode == Audience.RANKS else Audience.RANKS)
+
+    def chooseAudienceMode(self, mode: str):
+        """The operator (or a timer starting) chose what the audience display shows."""
+        self.setAudienceMode(mode)
 
     def setAudienceMode(self, mode: str):
         self.audienceDisplay.setMode(mode)
@@ -745,10 +817,21 @@ class MainWindow(QMainWindow):
     def updateTimerControls(self):
         # Lock out mode control while a match is running
         matchRunning = Timer.isMatchRunning()
-        self.timerMode.setText(f"Show {'Rankings' if self.audienceDisplay.mode != 'ranks' else 'Timer'}")
+        mode = self.audienceDisplay.mode
+        self.timerMode.setText(f"Show {'Rankings' if mode != Audience.RANKS else 'Timer'}")
         self.timerMode.setDisabled(matchRunning)
         self.timerCtl.setText("Reset Timer" if matchRunning else "Start Timer")
+        for choice, action in self.showActions.items():
+            action.setChecked(choice == mode)
+            action.setEnabled(not matchRunning or choice == Audience.MATCH_TIMER)
+        self.showActions[Audience.WELCOME].setVisible(self.audienceDisplay.canShowWelcome())
         self.menuBar().update()
+
+    def onPracticeEnded(self, event):
+        """When the practice timer ends, show the time of day, unless the operator turned that off
+        or the display has moved on from the practice timer."""
+        if self.audienceDisplay.mode == Audience.PRACTICE_TIMER and Substrate.loadClockAfterPractice():
+            self.setAudienceMode(Audience.CLOCK)
 
     def handleTimerCtl(self):
         if Timer.isMatchRunning():
@@ -758,7 +841,7 @@ class MainWindow(QMainWindow):
 
     def onMatchCompleted(self, event):
         self.matchNum.setValue(self.matchNum.value() + 1)
-        self.setAudienceMode("ranks")
+        self.setAudienceMode(Audience.RANKS)
 
     def practiceTimerControl(self):
         # Reuse the same window so it keeps showing the state of a running practice session
@@ -789,6 +872,8 @@ if __name__ == "__main__":
         if fontId != -1:
             fontFamily = QFontDatabase.applicationFontFamilies(fontId)[0]
             QApplication.setFont(QFont(fontFamily))
+        # The other weights the themed audience display uses
+        ThemedDisplay.registerFonts()
     except FileNotFoundError:
         print("No resource pack installed")
     except Exception as e:

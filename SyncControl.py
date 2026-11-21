@@ -28,6 +28,7 @@ from PyQt6.QtCore import *
 from PyQt6.QtGui import QActionGroup
 from PyQt6.QtWidgets import *
 
+import MatchStatus
 import Substrate
 import Sync
 from SetupReceiver import PORT as RECEIVER_PORT, SetupReceiver
@@ -417,8 +418,8 @@ class SyncController(QObject):
 
 
 class EventStatusMenu(QMenu):
-    """Toybox > Event status: what the scores pages say is going on. Matches are reported
-    automatically as they run; the rest are set by hand."""
+    """Toybox > Event status: what the audience display and, with sync, the scores pages say is
+    going on. Matches are followed automatically as they run; the rest are set by hand."""
 
     # (label, status) of the event-wide statuses
     _EVENT_STATUSES = [
@@ -448,25 +449,28 @@ class EventStatusMenu(QMenu):
         self.aboutToShow.connect(self._updateChecks)
 
     def _updateChecks(self):
-        current = self._controller.matchStatus
+        current = MatchStatus.current()
         if current is None:
             self._none.setChecked(True)
-        elif current[1] in Sync.MATCH_STATUSES:
+        elif current[1] in MatchStatus.MATCH_STATUSES:
             self._matches.setChecked(True)
         else:
             self._actions[current[1]].setChecked(True)
 
     def _showMatches(self):
-        current = self._controller.matchStatus
+        current = MatchStatus.current()
         # Already following the matches
-        if current is not None and current[1] in Sync.MATCH_STATUSES:
+        if current is not None and current[1] in MatchStatus.MATCH_STATUSES:
             return
+        MatchStatus.set(self._currentMatch(), "preparing")
         self._controller.setMatchStatus(self._currentMatch(), "preparing")
 
     def _set(self, status: str):
+        MatchStatus.set(0, status)
         self._controller.setMatchStatus(0, status)
 
     def _clear(self):
+        MatchStatus.clear()
         self._controller.clearMatchStatus()
 
 
