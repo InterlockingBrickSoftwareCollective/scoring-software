@@ -26,6 +26,7 @@ from PyQt6.QtGui import *
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtWidgets import *
 
+import Awards
 import Events
 import ResourceManager
 import ThemedDisplay
@@ -37,6 +38,7 @@ from Team import UNRANKED
 RANKS = "ranks"                    # The rankings: local or themed standings
 WELCOME = "welcome"                # The welcome loop: the welcome screen and the standings (only with a theme)
 CLOCK = "clock"                    # The time of day
+AWARDS = "awards"                  # The awards and advancement presentation, from the welcome screen (only with a theme)
 MATCH_TIMER = "match_timer"
 PRACTICE_TIMER = "practice_timer"
 TIMER_MODES = (MATCH_TIMER, PRACTICE_TIMER)
@@ -93,7 +95,7 @@ class AudienceWindow(QMainWindow):
     # The themed display was turned on or off
     themeChanged = pyqtSignal(bool)
     glowChanged = pyqtSignal(bool)
-    # What the display shows changed (RANKS, WELCOME, CLOCK, MATCH_TIMER or PRACTICE_TIMER)
+    # What the display shows changed (RANKS, WELCOME, CLOCK, AWARDS, MATCH_TIMER or PRACTICE_TIMER)
     modeChanged = pyqtSignal(str)
 
     def __init__(self, parent):
@@ -117,6 +119,8 @@ class AudienceWindow(QMainWindow):
         self.recentScores = []
         # What's going on at the event (MatchStatus), for the themed standings
         self.matchStatus = None
+        # The step of the awards presentation shown in AWARDS mode (an Awards.Step); None for the welcome screen
+        self.awardStep = None
 
         try:
             self.setWindowTitle("Audience Display")
@@ -268,10 +272,14 @@ class AudienceWindow(QMainWindow):
         """The welcome screen is only themed, so it's only available while the theme is on."""
         return self.themeEnabled and self.themed is not None and self.themed.hasWelcome()
 
+    def canShowAwards(self) -> bool:
+        """The awards presentation is only themed, so it's only available while a theme with award screens is on."""
+        return self.themeEnabled and self.themed is not None and self.themed.hasAwards()
+
     def setMode(self, mode: str):
         """Show the rankings (RANKS), the welcome loop (WELCOME), the time of day (CLOCK),
-        the match timer (MATCH_TIMER), or the practice timer (PRACTICE_TIMER)."""
-        if mode == WELCOME and not self.canShowWelcome():
+        the awards presentation (AWARDS), the match timer (MATCH_TIMER), or the practice timer (PRACTICE_TIMER)."""
+        if (mode == WELCOME and not self.canShowWelcome()) or (mode == AWARDS and not self.canShowAwards()):
             mode = RANKS
         changed = mode != self.mode
         self.mode = mode
@@ -293,7 +301,7 @@ class AudienceWindow(QMainWindow):
             return
         self.themeEnabled = enabled
         Events.publish(Events.AudienceThemeChanged(enabled))
-        if self.mode == WELCOME and not enabled:
+        if self.mode in (WELCOME, AWARDS) and not enabled:
             self.setMode(RANKS)
         self.updateDisplayState()
         self.themeChanged.emit(enabled)
@@ -308,7 +316,7 @@ class AudienceWindow(QMainWindow):
             return
         Events.publish(Events.GlowEffectsChanged(enabled))
         self.themed.setGlow(enabled)
-        # Redraw a timer or clock screen, which the rotation's refresh leaves alone
+        # Redraw a timer, clock or awards screen, which the rotation's refresh leaves alone
         self.updateDisplayState()
         self.glowChanged.emit(enabled)
 
@@ -319,6 +327,46 @@ class AudienceWindow(QMainWindow):
     def isShowingThemedTimer(self) -> bool:
         return (self.mode in TIMER_MODES and self.themeEnabled
                 and self.themed is not None and self.themed.hasTimer())
+
+    def isShowingAwards(self) -> bool:
+        return self.mode == AWARDS and self.canShowAwards()
+
+    def showAwardStep(self, step):
+        """Show a step of the awards presentation (an Awards.Step, or None for the welcome screen)
+        whenever the display is in AWARDS mode."""
+        self.awardStep = step
+        self.refreshAwards()
+
+    def refreshAwards(self):
+        if not self.isShowingAwards():
+            return
+        step = self.awardStep
+        if step is None or step.kind == Awards.WELCOME:
+            self.themed.showWelcome()
+        elif step.kind == Awards.INTRO:
+            self.themed.showStill(ThemedDisplay.AWARD_INTRO, **ThemedDisplay.awardIntro(step.award.name))
+        elif step.kind == Awards.BLANK:
+            self.themed.showStill(ThemedDisplay.AWARD_WINNER, **ThemedDisplay.awardBlank())
+        elif step.kind == Awards.THANKS:
+            self.themed.showStill(ThemedDisplay.THANK_YOU)
+        elif step.kind in (Awards.ADVANCING_TITLE, Awards.ADVANCING):
+            teams = [(number, self.teamName(number)) for number in step.advancement.teams]
+            args = ThemedDisplay.advancingScreen(self.theme, step.advancement.title(), teams, revealed=step.shown,
+                                                 rows=step.kind == Awards.ADVANCING)
+            self.themed.showStill(ThemedDisplay.ADVANCING, **args)
+        else:
+            team = (step.team, self.teamName(step.team)) if step.revealed else None
+            args = ThemedDisplay.awardReveal(self.theme, step.award.name, Awards.placeLabel(step.award, step.place), team)
+            self.themed.showStill(ThemedDisplay.AWARD_WINNER, **args)
+
+    def themeHasScreen(self, screen: str) -> bool:
+        return self.theme is not None and self.theme.hasScreen(screen)
+
+    def teamName(self, number: int) -> str:
+        for team in self.parent.teams:
+            if team.number == number:
+                return str(team.name)
+        return ""
 
     def isShowingThemedClock(self) -> bool:
         return self.mode == CLOCK and self.themeEnabled and self.themed is not None and self.themed.hasClock()
@@ -392,11 +440,13 @@ class AudienceWindow(QMainWindow):
         """The event results page, whose QR code the welcome screen shows, or None for none."""
         if self.themed is not None:
             self.themed.setResultsUrl(url)
+            self.refreshAwards()
 
     def setEventInfo(self, name: str, date: str):
         """The event name and date the themed screens show."""
         if self.themed is not None:
             self.themed.setEventInfo(name, date)
+            self.refreshAwards()
 
     def showThemedScreen(self, screen: str, values: dict = None, **kwargs):
         """Hold one of the theme's screens (e.g. "award_winner") in place of the rotation
@@ -414,6 +464,7 @@ class AudienceWindow(QMainWindow):
         self.loadWidgets()
         if self.themed is not None:
             self.themed.refresh()
+            self.refreshAwards()  # For a team renamed while it's shown
 
     def scrollToTop(self):
         self.scroll.verticalScrollBar().setValue(0)
@@ -424,8 +475,9 @@ class AudienceWindow(QMainWindow):
         showThemedTimer = self.isShowingThemedTimer()
         showThemedClock = self.isShowingThemedClock()
         showWelcome = self.mode == WELCOME and self.canShowWelcome()
+        showAwards = self.isShowingAwards()
         # The themed screens fill the window edge to edge, letterboxed in the theme's own color
-        themed = showTheme or showThemedTimer or showThemedClock or showWelcome
+        themed = showTheme or showThemedTimer or showThemedClock or showWelcome or showAwards
         self.mainLayout.setContentsMargins(QMargins(0, 0, 0, 0) if themed else self.defaultMargins)
         if themed:
             self.stack.setCurrentWidget(self.themed.view)
@@ -437,6 +489,8 @@ class AudienceWindow(QMainWindow):
             self.themed.showClock(datetime.now())
         elif showWelcome:
             self.themed.start(welcome=True)
+        elif showAwards:
+            self.refreshAwards()
         elif showTheme:
             self.themed.start()
         elif self.themed is not None:

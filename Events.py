@@ -103,6 +103,20 @@ class ClockAfterPracticeChanged(Event):
 
 
 @dataclass(frozen=True)
+class AwardsChanged(Event):
+    """The operator saved the awards (Awards.Award objects, in presentation order)."""
+    awards: tuple
+
+
+@dataclass(frozen=True)
+class AdvancementChanged(Event):
+    """The operator saved the teams advancing to the next event (team numbers in presentation
+    order) and that event's name (empty if it isn't named)."""
+    nextEvent: str
+    teams: tuple
+
+
+@dataclass(frozen=True)
 class MatchStatusChanged(Event):
     """What's going on at the event changed (see MatchStatus): status is one of
     MatchStatus.MATCH_STATUSES for a match, one of MatchStatus.EVENT_STATUSES with match 0,

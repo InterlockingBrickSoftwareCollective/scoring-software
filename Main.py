@@ -39,6 +39,8 @@ import Timer
 
 from AddWindow import AddWindow
 from Audience import AudienceWindow
+from AwardsEntryWindow import AwardsEntryWindow
+from AwardsWindow import AwardsWindow
 from CustomWidgets import ScoreBubble, fitRankLabel
 from EventInfoDialog import EventInfoDialog, effectiveEventName
 from Insert import Insert
@@ -144,6 +146,7 @@ def themeColors():
 SHOW_CHOICES = [
     ("Rankings", Audience.RANKS),
     ("Welcome Screen", Audience.WELCOME),
+    ("Awards and Advancement", Audience.AWARDS),
     ("Current Time", Audience.CLOCK),
     ("Match Timer", Audience.MATCH_TIMER),
     ("Practice Timer", Audience.PRACTICE_TIMER),
@@ -173,6 +176,8 @@ class MainWindow(QMainWindow):
             self.scoresheetWindow = None
             self.addWindow = None
             self.practiceTimerCtl = None
+            self.awardsWindow = None
+            self.awardsEntryWindow = None
 
             self.mainWidget = QWidget()
             self.mainLayout = QGridLayout()
@@ -309,7 +314,9 @@ class MainWindow(QMainWindow):
             cycleTimeAction.triggered.connect(self.showCycleTimeReport)
             aboutAction = QAction("About...")
             aboutAction.triggered.connect(self.showAboutDialog)
-            self.toyboxMenu.addActions([aboutAction, cycleTimeAction, installResPack])
+            enterAwardsAction = QAction("Enter Awards and Advancement...")
+            enterAwardsAction.triggered.connect(self.enterAwards)
+            self.toyboxMenu.addActions([aboutAction, cycleTimeAction, installResPack, enterAwardsAction])
 
             # Sync to score reflector
             self.sync = SyncController(self)
@@ -533,6 +540,10 @@ class MainWindow(QMainWindow):
                     self.scoresheetWindow.close()
                 if self.addWindow is not None:
                     self.addWindow.close()
+                if self.awardsWindow is not None:
+                    self.awardsWindow.close()
+                if self.awardsEntryWindow is not None:
+                    self.awardsEntryWindow.closeWithoutSaving()  # The database is already closed
 
                 self.audienceDisplay.close()
 
@@ -814,6 +825,26 @@ class MainWindow(QMainWindow):
     def chooseAudienceMode(self, mode: str):
         """The operator (or a timer starting) chose what the audience display shows."""
         self.setAudienceMode(mode)
+        if mode == Audience.AWARDS and self.audienceDisplay.mode == Audience.AWARDS:
+            self.openAwardsWindow()
+
+    def openAwardsWindow(self):
+        # Reuse the same window so it keeps its place in the presentation
+        if self.awardsWindow is None:
+            self.awardsWindow = AwardsWindow(self.audienceDisplay, Substrate.loadAwards, Substrate.loadAdvancement,
+                                             lambda: self.setAudienceMode(Audience.AWARDS))
+        self.awardsWindow.show()
+        self.awardsWindow.raise_()
+        self.awardsWindow.activateWindow()
+
+    def enterAwards(self):
+        if self.awardsEntryWindow is None:
+            self.awardsEntryWindow = AwardsEntryWindow(Substrate.loadAwards, Substrate.loadAdvancement, lambda: self.teams)
+        elif not self.awardsEntryWindow.isVisible():
+            self.awardsEntryWindow.load()  # Start from what's saved; an open window keeps its unsaved changes
+        self.awardsEntryWindow.show()
+        self.awardsEntryWindow.raise_()
+        self.awardsEntryWindow.activateWindow()
 
     def setAudienceMode(self, mode: str):
         self.audienceDisplay.setMode(mode)
@@ -830,6 +861,7 @@ class MainWindow(QMainWindow):
             action.setChecked(choice == mode)
             action.setEnabled(not matchRunning or choice == Audience.MATCH_TIMER)
         self.showActions[Audience.WELCOME].setVisible(self.audienceDisplay.canShowWelcome())
+        self.showActions[Audience.AWARDS].setVisible(self.audienceDisplay.canShowAwards())
         self.menuBar().update()
 
     def onPracticeEnded(self, event):

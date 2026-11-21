@@ -27,6 +27,7 @@ from datetime import datetime
 from typing import Optional
 
 import About
+import Awards
 import Events
 import ResourceManager
 
@@ -66,6 +67,12 @@ GLOW_EFFECTS_META_KEY = "audience.glow"
 
 # Meta table key holding whether to show the time of day after practice ends ("on" or "off")
 CLOCK_AFTER_PRACTICE_META_KEY = "audience.clockAfterPractice"
+
+# The current database schema: version 5 added the awards table
+SCHEMA_VERSION = 5
+
+# Meta table key holding the name of the event the advancing teams go on to
+ADVANCEMENT_NEXT_EVENT_META_KEY = "advancement.nextEvent"
 
 # All database access happens on a single dedicated thread, which keeps slow
 # disk writes off the UI thread and satisfies SQLite's requirement that a
@@ -110,6 +117,8 @@ def init():
     Events.subscribe(Events.EventInfoChanged, lambda e: _write(_setEventInfo, e.name, e.date))
     Events.subscribe(Events.ClockAfterPracticeChanged,
                      lambda e: _write(_setMeta, CLOCK_AFTER_PRACTICE_META_KEY, "on" if e.enabled else "off"))
+    Events.subscribe(Events.AwardsChanged, lambda e: _write(_saveAwards, list(e.awards)))
+    Events.subscribe(Events.AdvancementChanged, lambda e: _write(_saveAdvancement, e.nextEvent, list(e.teams)))
 
 
 def deinit():
@@ -164,6 +173,16 @@ def loadClockAfterPractice() -> bool:
     return _run(_getMeta, CLOCK_AFTER_PRACTICE_META_KEY) != "off"
 
 
+def loadAdvancement() -> Awards.Advancement:
+    """Return the saved advancing teams and the event they advance to."""
+    return _run(_loadAdvancement)
+
+
+def loadAwards() -> list:
+    """Return the saved awards (Awards.Award objects) in presentation order."""
+    return _run(_loadAwards)
+
+
 def getMeta(key: str) -> Optional[str]:
     """Return a value saved with setMeta(), or None if there is none."""
     return _run(_getMeta, key)
@@ -211,6 +230,7 @@ def _open():
         _createTables()
         _writeAuditEntry("db_created", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
     else:
+        _upgradeTables()
         _writeAuditEntry("db_opened", {"ibss_version": About.getVersion(), "pack_version": ResourceManager.getResourcePackVersion()})
 
 
@@ -375,6 +395,35 @@ def _writeAuditEntry(tag: str, data: dict):
     _db.commit()
 
 
+def _loadAwards() -> list:
+    _cur.execute("SELECT name, presentation_order, winner, runners_up FROM awards ORDER BY presentation_order")
+    return [Awards.Award(name=a[0], order=a[1], winner=a[2], runnersUp=json.loads(a[3]) if a[3] else [])
+            for a in _cur.fetchall()]
+
+
+def _saveAwards(awards: list):
+    """Replace the saved awards with awards."""
+    _cur.execute("DELETE FROM awards")
+    _cur.executemany("INSERT INTO awards VALUES (?, ?, ?, ?)",
+                     [(a.name, a.order, a.winner, json.dumps(list(a.runnersUp))) for a in awards])
+    _writeAuditEntry("awards_update", {"awards": [{"name": a.name, "order": a.order, "winner": a.winner,
+                                                   "runners_up": list(a.runnersUp)} for a in awards]})
+
+
+def _loadAdvancement() -> Awards.Advancement:
+    _cur.execute("SELECT teamnumber FROM advancement ORDER BY presentation_order")
+    teams = [row[0] for row in _cur.fetchall()]
+    return Awards.Advancement(nextEvent=_getMeta(ADVANCEMENT_NEXT_EVENT_META_KEY) or "", teams=teams)
+
+
+def _saveAdvancement(nextEvent: str, teams: list):
+    """Replace the saved advancing teams and the event they advance to."""
+    _cur.execute("DELETE FROM advancement")
+    _cur.executemany("INSERT INTO advancement VALUES (?, ?)", list(enumerate(teams, start=1)))
+    _cur.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", (ADVANCEMENT_NEXT_EVENT_META_KEY, nextEvent))
+    _writeAuditEntry("advancement_update", {"next_event": nextEvent, "teams": list(teams)})
+
+
 def _getMeta(key: str) -> Optional[str]:
     _cur.execute("SELECT value FROM meta WHERE key = ?", (key,))
     row = _cur.fetchone()
@@ -467,7 +516,7 @@ def _createTables():
     """Internal method to create tables for a freshly-initialized database."""
     _cur.executescript("""
                        PRAGMA application_id = 0;
-                       PRAGMA user_version = 4;
+                       PRAGMA user_version = 5;
                        CREATE TABLE teams(teamnumber type UNIQUE, name, pit);
                        CREATE TABLE scores(slug type UNIQUE, teamnumber, round, score, comments);
                        CREATE TABLE audit(timestamp, tag, data);
@@ -475,4 +524,22 @@ def _createTables():
                        CREATE TABLE scoresheets(slug type UNIQUE, teamnumber, round, scoresheet);
                        CREATE TABLE meta(key type UNIQUE, value);
                        """)
+    _createAwardsTables()
+    _db.commit()
+
+
+def _createAwardsTables():
+    # runners_up is a JSON list of team numbers: 2nd place, 3rd place...
+    _cur.execute("CREATE TABLE IF NOT EXISTS awards(name, presentation_order, winner, runners_up)")
+    _cur.execute("CREATE TABLE IF NOT EXISTS advancement(presentation_order, teamnumber)")
+
+
+def _upgradeTables():
+    """Bring a database made by an earlier version up to the current schema."""
+    # Version 5 is still in development, so its tables are created even in databases already
+    # marked as version 5, in case they were made before a table was added
+    _createAwardsTables()
+    version = _cur.execute("PRAGMA user_version").fetchone()[0]
+    if version < SCHEMA_VERSION:
+        _cur.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
     _db.commit()

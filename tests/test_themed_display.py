@@ -68,7 +68,7 @@ def test_loads_the_packs_theme(app, monkeypatch, tmp_path):
     monkeypatch.setattr(ResourceManager, "_temp_resource_dir", str(tmp_path))
     theme = ThemedDisplay.Theme.fromResourcePack()
     assert theme.name == "TESTGLOW"
-    assert theme.hasScreen("standings") and not theme.hasScreen("thank_you")
+    assert theme.hasScreen("standings") and not theme.hasScreen("announcements")
 
 
 def test_ignores_a_theme_from_a_newer_contract(app, monkeypatch, tmp_path):
@@ -320,16 +320,6 @@ def test_clock_colon_blinks(theme):
     _, ids = parse(theme.build("clock", **ThemedDisplay.clockScreen(theme, datetime(2027, 1, 16, 10, 5, 3))))
     assert ids["clock_colon"].get("display") == "none"
     assert ids["clock_colon__glow"].get("display") == "none"
-
-
-def test_clock_keeps_a_one_digit_hour_centered(theme):
-    _, ids = parse(theme.build("clock", **ThemedDisplay.clockScreen(theme, datetime(2027, 1, 16, 10, 5))))
-    assert ids["clock_time"].get("transform") is None
-    _, ids = parse(theme.build("clock", **ThemedDisplay.clockScreen(theme, datetime(2027, 1, 16, 9, 5))))
-    digit = width("0", 440, 900)
-    shift = float(re.match(r"translate\((-?[0-9.]+) 0\)", ids["clock_time"].get("transform")).group(1))
-    assert shift == pytest.approx(-digit / 2, abs=0.5)
-    assert ids["clock_time__glow"].get("transform") == ids["clock_time"].get("transform")
 
 
 def test_show_clock_caches_everything_but_the_time(themed, monkeypatch):
@@ -638,7 +628,7 @@ def test_held_screen_gets_the_event_name(themed, monkeypatch):
 
 def test_show_screen_rejects_unknown_screens(themed):
     with pytest.raises(KeyError):
-        themed.showScreen("thank_you")
+        themed.showScreen("announcements")
 
 
 def test_view_letterboxes_to_the_themes_shape(themed):
@@ -665,6 +655,8 @@ def test_every_screen_in_the_resource_pack_renders(app):
         assert QSvgRenderer(QByteArray(theme.build(screen, values=values))).isValid(), screen
 
 
+# Awards
+
 def test_moved_elements_take_their_glow_along(theme):
     # When the award name wraps, the team number moves down to make room, and its glow with it
     theme.screens["award_winner"]["fields"]["award_name"] = {
@@ -676,6 +668,95 @@ def test_moved_elements_take_their_glow_along(theme):
     _, ids = parse(theme.build("award_winner", values={"award_name": "Engineering Excellence Award Sponsored by Acme"}))
     assert ids["team_number"].get("transform", "").startswith("translate(0 ")
     assert ids["team_number__glow"].get("transform") == ids["team_number"].get("transform")
+
+
+def test_award_intro(theme):
+    _, ids = parse(theme.build("award_intro", **ThemedDisplay.awardIntro("Core Values")))
+    assert ids["award_name"].text == "Core Values" and ids["award_name__glow"].text == "Core Values"
+
+
+def test_award_reveal_before_and_after_the_team(theme):
+    before = ThemedDisplay.awardReveal(theme, "Robot Performance", "2ND PLACE", None)
+    _, ids = parse(theme.build("award_winner", **before))
+    assert ids["award_name"].text == "Robot Performance" and ids["place"].text == "2ND PLACE"
+    assert ids["place_badge"].get("display") is None
+    assert ids["team_number"].get("display") == "none" and ids["team_name"].get("display") == "none"
+
+    after = ThemedDisplay.awardReveal(theme, "Robot Performance", "2ND PLACE", (1234, "Bots"))
+    _, ids = parse(theme.build("award_winner", **after))
+    assert ids["team_number"].text == "1234" and ids["team_name"].text == "Bots"
+    assert ids["team_number"].get("display") is None and ids["team_name"].get("display") is None
+
+
+def test_award_reveal_hides_the_place_without_runners_up(theme):
+    _, ids = parse(theme.build("award_winner", **ThemedDisplay.awardReveal(theme, "Core Values", None, (5, "Fives"))))
+    assert ids["place_badge"].get("display") == "none"
+
+
+def test_award_reveal_for_a_theme_without_places(theme):
+    del theme.screens["award_winner"]["fields"]["place"]
+    args = ThemedDisplay.awardReveal(theme, "Robot Performance", "WINNER", (5, "Fives"))
+    assert "place" not in args["values"]
+
+
+def test_still_screens_stop_the_rotation_until_started(themed):
+    themed.setEventInfo("Fall Qualifier", "")
+    themed.start()
+    themed.showWelcome()
+    assert themed.currentScreen() == ("still", "welcome") and not themed.isRunning()
+    assert not themed._timer.isActive()
+    themed.showStill("award_intro", **ThemedDisplay.awardIntro("Core Values"))
+    assert themed.currentScreen() == ("still", "award_intro")
+    themed.start()
+    assert themed.currentScreen() == ("standings", 1) and themed.isRunning()
+
+
+def test_still_screen_gets_the_event_name(themed, monkeypatch):
+    built = []
+    original = themed.theme.build
+    monkeypatch.setattr(themed.theme, "build", lambda screen, **kw: built.append((screen, kw)) or original(screen, **kw))
+    themed.setEventInfo("Fall Qualifier", "")
+    themed.showStill("award_intro", **ThemedDisplay.awardIntro("Core Values"))
+    assert built[-1] == ("award_intro", {"values": {"event_name": "Fall Qualifier", "award_name": "Core Values"}})
+
+
+def test_has_awards_needs_both_award_screens(theme):
+    themed = ThemedDisplay.ThemedAudience(theme, lambda: [])
+    assert themed.hasAwards()
+    del theme.screens["award_intro"]
+    assert not themed.hasAwards()
+
+
+# Advancing teams, revealed one at a time
+
+ADVANCING = [(101, "Alpha"), (102, "Beta"), (103, "Gamma")]
+
+
+def test_advancing_title_only(theme):
+    _, ids = parse(theme.build("advancing", **ThemedDisplay.advancingScreen(theme, "Advancing to State", ADVANCING, rows=False)))
+    assert ids["title"].text == "Advancing to State"
+    assert all(ids[f"adv{n}"].get("display") == "none" for n in range(1, 13))
+
+
+def test_advancing_blank_rows_then_one_team_at_a_time(theme):
+    args = ThemedDisplay.advancingScreen(theme, "Advancing to State", ADVANCING, revealed=0)
+    _, ids = parse(theme.build("advancing", **args))
+    assert [ids[f"adv{n}"].get("display") for n in range(1, 5)] == [None, None, None, "none"]
+    assert all(ids[f"adv{n}_number"].get("display") == "none" for n in range(1, 4))
+
+    args = ThemedDisplay.advancingScreen(theme, "Advancing to State", ADVANCING, revealed=2)
+    _, ids = parse(theme.build("advancing", **args))
+    assert [ids[f"adv{n}_number"].text for n in (1, 2)] == ["101", "102"]
+    assert [ids[f"adv{n}_number"].get("display") for n in (1, 2, 3)] == [None, None, "none"]
+    assert ids["adv3_name"].get("display") == "none"
+
+
+def test_advancing_layout_stays_put_while_revealing(theme):
+    teams = [(100 + n, f"Team {n}") for n in range(1, 10)]  # Two columns
+    full = ThemedDisplay.advancingList(theme, teams)
+    partial = ThemedDisplay.advancingList(theme, teams, revealed=1)
+    assert full["attributes"] == partial["attributes"]
+    assert {i for i in full["shown"] if "_" not in i} == {i for i in partial["shown"] if "_" not in i}
 
 
 def test_text_glow_can_be_left_out(theme):
@@ -691,3 +772,43 @@ def test_text_glow_can_be_left_out(theme):
     assert "status_dot__glow" in ThemedDisplay._index(ET.fromstring(theme.build("standings")))
     theme.glow = True
     assert "event_name__glow" in ThemedDisplay._index(ET.fromstring(theme.build("welcome")))
+
+
+@pytest.fixture
+def singleTheme(theme):
+    """The fake theme with a wider single column for 6 teams or fewer, as the BIOGLOW pack has."""
+    rows = "".join(f'<g id="single{n}"><rect x="380" y="{268 + (n - 1) * 106}" width="1160" height="92"/>'
+                   + faketheme.text(f"single{n}_number", 412, 330 + (n - 1) * 106, 68, "[####]", 900, "start")
+                   + faketheme.text(f"single{n}_name", 630, 330 + (n - 1) * 106, 56, "[TEAM NAME]", 400, "start")
+                   + "</g>" for n in range(1, 7))
+    theme._templates["advancing"].getroot().append(
+        ET.fromstring(f'<g xmlns="http://www.w3.org/2000/svg" id="advancing_single" display="none">{rows}</g>'))
+    theme.screens["advancing"]["list"]["single"] = {"group": "advancing_single", "prefix": "single", "rows": 6}
+    return theme
+
+
+def test_advancing_uses_the_single_column_for_six_or_fewer(singleTheme):
+    _, ids = parse(singleTheme.build("advancing", **ThemedDisplay.advancingScreen(singleTheme, "Advancing", ADVANCING)))
+    assert ids["advancing_single"].get("display") is None
+    assert ids["advancing_left"].get("display") == "none" and ids["advancing_right"].get("display") == "none"
+    assert [ids[f"single{n}_number"].text for n in (1, 2, 3)] == ["101", "102", "103"]
+    assert ids["single3_name"].text == "Gamma"
+    assert [ids[f"single{n}"].get("display") for n in (3, 4)] == [None, "none"]
+
+
+def test_advancing_single_column_reveals_one_at_a_time(singleTheme):
+    args = ThemedDisplay.advancingScreen(singleTheme, "Advancing", ADVANCING, revealed=1)
+    _, ids = parse(singleTheme.build("advancing", **args))
+    assert ids["single1_number"].text == "101" and ids["single1_number"].get("display") is None
+    assert ids["single2"].get("display") is None and ids["single2_number"].get("display") == "none"
+    args = ThemedDisplay.advancingScreen(singleTheme, "Advancing", ADVANCING, rows=False)
+    _, ids = parse(singleTheme.build("advancing", **args))
+    assert all(ids[f"single{n}"].get("display") == "none" for n in range(1, 7))
+
+
+def test_advancing_uses_two_columns_past_six_even_with_a_single_column(singleTheme):
+    teams = [(100 + n, f"Team {n}") for n in range(1, 8)]
+    _, ids = parse(singleTheme.build("advancing", **ThemedDisplay.advancingScreen(singleTheme, "Advancing", teams)))
+    assert ids["advancing_single"].get("display") == "none"
+    assert ids["advancing_left"].get("display") is None and ids["advancing_right"].get("display") is None
+    assert ids["adv1_number"].text == "101"

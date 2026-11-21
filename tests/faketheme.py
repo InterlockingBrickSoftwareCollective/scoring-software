@@ -72,6 +72,8 @@ def standingsSvg():
 
 AWARD_WINNER = (HEADER
                 + text("award_name", 960, 268, 34, "Core Values Award", 700)
+                + '<g id="place_badge"><rect x="760" y="258" width="400" height="84" rx="42"/>'
+                + text("place", 960, 316, 44, "2ND PLACE", 900) + "</g>"
                 + text("team_label", 960, 324, 30, "TEAM", 300)
                 + text("team_number", 960, 577, 280, "[####]", 900)
                 + text("team_name", 960, 705, 96, "[TEAM NAME]", 900)
@@ -79,6 +81,18 @@ AWARD_WINNER = (HEADER
                 + text("event_name", 960, 996, 28, "[EVENT NAME]", 700)
                 + text("event_name__header", 960, 124, 26, "[EVENT NAME]", 700)
                 + "</svg>")
+
+AWARD_INTRO = (HEADER
+               + text("award_eyebrow", 960, 559, 30, "AND THE NEXT AWARD IS…", 700)
+               + text("award_name__glow", 960, 726, 150, "Core Values Award", 900, extra='filter="url(#tg)"')
+               + text("award_name", 960, 726, 150, "Core Values Award", 900)
+               + text("event_name", 960, 996, 28, "[EVENT NAME]", 700)
+               + "</svg>")
+
+THANK_YOU = (HEADER
+             + text("title", 960, 175, 88, "Thank you", 900)
+             + text("event_name", 960, 996, 28, "[EVENT NAME]", 700)
+             + "</svg>")
 
 TIMER = (HEADER
          + text("timer_title__glow", 960, 175, 88, "Match [N]", 900, extra='filter="url(#tg)"')
@@ -141,7 +155,13 @@ THEME = {
                                "activeFill": ACCENT, "doneFill": "#C6DE94", "doneOpacity": 0.6,
                                "todoStroke": "#C6DE94", "todoOpacity": 0.6, "todoStrokeWidth": 2, "max": 12},
                       "fields": {f"row{n}_name": {"maxWidth": 510, "minSize": 22} for n in range(1, ROWS + 1)}},
+        "thank_you": {"file": "thank_you.svg", "fields": {"event_name": {"maxWidth": 1100, "minSize": 18}}},
+        "award_intro": {"file": "award_intro.svg", "fields": {
+            "award_name": {"maxWidth": 1440, "minSize": 96, "maxLines": 2, "lineHeight": 0.95, "wrap": "center",
+                           "above": ["award_eyebrow"]},
+            "event_name": {"maxWidth": 1100, "minSize": 18}}},
         "award_winner": {"file": "award_winner.svg", "fields": {
+            "place": {"maxWidth": 340, "minSize": 28},
             "team_name": {"maxWidth": 1440, "minSize": 64, "maxLines": 2, "lineHeight": 1.0, "wrap": "center",
                           "above": ["award_name", "team_label", "team_number"], "below": ["team_location"]},
             "event_name": {"maxWidth": 1100, "minSize": 18}}},
@@ -169,7 +189,7 @@ THEME = {
 def write(directory: str, theme: dict = None) -> str:
     """Write the theme into directory and return it."""
     os.makedirs(directory, exist_ok=True)
-    files = {"welcome.svg": WELCOME, "standings.svg": standingsSvg(), "award_winner.svg": AWARD_WINNER,
+    files = {"welcome.svg": WELCOME, "standings.svg": standingsSvg(), "award_winner.svg": AWARD_WINNER, "award_intro.svg": AWARD_INTRO, "thank_you.svg": THANK_YOU,
              "timer.svg": TIMER, "clock.svg": CLOCK, "advancing.svg": advancingSvg()}
     for name, content in files.items():
         with open(os.path.join(directory, name), "w", encoding="utf-8") as f:

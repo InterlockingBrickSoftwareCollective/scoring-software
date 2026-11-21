@@ -53,8 +53,9 @@ ET.register_namespace("xlink", XLINK_NS)
 THEME_FILE = os.path.join("display", "theme.json")
 SUPPORTED_THEME_VERSION = 1
 
-# Every page (welcome screen or standings page) is shown this long
+# How long each standings page and the welcome screen are shown
 STANDINGS_PAGE_SECONDS = 8
+WELCOME_SECONDS = 8
 
 NO_SCORE = "—"
 
@@ -569,33 +570,106 @@ def standingsPage(theme: Theme, rows: list, page: int, recent=(), now: Optional[
 
 # Advancing teams ----------------------------------------------------------------------
 
-def advancingList(theme: Theme, teams: list) -> dict:
+def advancingList(theme: Theme, teams: list, revealed: Optional[int] = None, rows: bool = True) -> dict:
     """build() arguments for the advancing screen, for (number, name) pairs in the order to show
-    them: one centered column if they fit, otherwise two balanced columns. Teams past the
-    template's slots are left out."""
+    them: one centered column if they fit, otherwise two balanced columns. The one column is the
+    theme's wider single column if it has one, or else its left column shifted to the center.
+    Teams past the template's slots are left out. Only the first `revealed` teams (all, if None)
+    are filled in; the rest are blank rows. Without rows, the screen shows just its title. The
+    layout is the same however many are revealed, so rows don't move as teams are revealed."""
     spec = theme.screens["advancing"]["list"]
-    rows, columns = int(spec["rows"]), int(spec["columns"])
-    teams = list(teams)[:rows * columns]
-    perColumn = len(teams) if len(teams) <= rows else -(-len(teams) // columns)
+    rowCount, columns = int(spec["rows"]), int(spec["columns"])
+    single = spec.get("single")
+    teams = list(teams)[:rowCount * columns]
+    revealed = len(teams) if revealed is None else revealed
     values, hidden, shown, attributes = {}, [], [], {}
-    placed = {}
-    for i, team in enumerate(teams):
-        column, row = divmod(i, perColumn) if perColumn else (0, 0)
-        placed[column * rows + row + 1] = team
-    for slot in range(1, rows * columns + 1):
-        if slot in placed:
-            number, name = placed[slot]
-            values[f"adv{slot}_number"] = str(number)
-            values[f"adv{slot}_name"] = str(name)
-            shown.append(f"adv{slot}")
+
+    def fill(slot: str, i: Optional[int]):
+        """Show team i (or a blank row, or nothing for None) in the row with id slot."""
+        if i is None or not rows:
+            hidden.append(slot)
+            return
+        shown.append(slot)
+        if i < revealed:
+            number, name = teams[i]
+            values[f"{slot}_number"] = str(number)
+            values[f"{slot}_name"] = str(name)
+            shown.extend([f"{slot}_number", f"{slot}_name"])
         else:
-            hidden.append(f"adv{slot}")
-    if len(teams) <= rows:
+            hidden.extend([f"{slot}_number", f"{slot}_name"])
+
+    if single and len(teams) <= int(single["rows"]):
+        hidden += [spec["left"], spec["right"]]
+        shown.append(single["group"])
+        for n in range(1, int(single["rows"]) + 1):
+            fill(f"{single['prefix']}{n}", n - 1 if n <= len(teams) else None)
+        return {"values": values, "hidden": hidden, "shown": shown, "attributes": attributes}
+
+    if single:
+        hidden.append(single["group"])
+    shown.append(spec["left"])
+    perColumn = len(teams) if len(teams) <= rowCount else -(-len(teams) // columns)
+    placed = {}
+    for i in range(len(teams)):
+        column, row = divmod(i, perColumn) if perColumn else (0, 0)
+        placed[column * rowCount + row + 1] = i
+    for slot in range(1, rowCount * columns + 1):
+        fill(f"adv{slot}", placed.get(slot))
+    if len(teams) <= rowCount:
         hidden.append(spec["right"])
         attributes[spec["left"]] = {"transform": f"translate({_formatNumber(float(spec['singleColumnShift']))} 0)"}
     else:
         shown.append(spec["right"])
     return {"values": values, "hidden": hidden, "shown": shown, "attributes": attributes}
+
+
+def advancingScreen(theme: Theme, title: str, teams: list, revealed: Optional[int] = None, rows: bool = True) -> dict:
+    """build() arguments for the advancing screen with its title; see advancingList()."""
+    args = advancingList(theme, teams, revealed, rows)
+    args["values"]["title"] = title
+    return args
+
+
+# Awards -------------------------------------------------------------------------------
+
+AWARD_INTRO = "award_intro"
+AWARD_WINNER = "award_winner"
+AWARD_SCREENS = (AWARD_INTRO, AWARD_WINNER)
+ADVANCING = "advancing"
+THANK_YOU = "thank_you"
+PLACE_BADGE = "place_badge"  # The group holding the award_winner screen's place field
+
+
+def awardIntro(name: str) -> dict:
+    """build() arguments for the award intro screen."""
+    return {"values": {"award_name": name}}
+
+
+def awardReveal(theme: Theme, name: str, place: Optional[str], team: Optional[tuple]) -> dict:
+    """build() arguments for the award winner screen: the award's name, its place label
+    ("2ND PLACE"; None hides the place badge), and team, (number, name), or None to leave the
+    team out until it's revealed."""
+    fields = theme.screens[AWARD_WINNER].get("fields", {})
+    values, hidden, shown = {"award_name": name}, [], []
+    if place and "place" in fields:
+        values["place"] = place
+        shown.append(PLACE_BADGE)
+    else:
+        hidden.append(PLACE_BADGE)
+    if team is not None:
+        number, teamName = team
+        values["team_number"] = str(number)
+        values["team_name"] = str(teamName)
+        shown += ["team_number", "team_name"]
+    else:
+        hidden += ["team_number", "team_name"]
+    return {"values": values, "hidden": hidden, "shown": shown}
+
+
+def awardBlank() -> dict:
+    """build() arguments for the award winner screen with no award or team, just its backdrop
+    and footer."""
+    return {"values": {}, "hidden": ["award_name", PLACE_BADGE, "team_number", "team_name"]}
 
 
 # Timer --------------------------------------------------------------------------------
@@ -761,6 +835,7 @@ class ThemedAudience(QObject):
         self._sequence: list = []
         self._position = 0
         self._held: Optional[tuple] = None  # (screen, build arguments) shown with showScreen()
+        self._still: Optional[str] = None  # The screen shown with showWelcome() or showStill(), while stopped
         self._running = False
         self._welcome = False  # Whether the rotation starts with the welcome screen
         self._timer = QTimer(self)
@@ -776,10 +851,11 @@ class ThemedAudience(QObject):
     def start(self, welcome: bool = False):
         """Start (or keep) showing the rotation, or the held screen. With welcome, the rotation
         is the welcome loop: the welcome screen, then every standings page."""
-        if welcome != self._welcome:
+        if welcome != self._welcome or self._still is not None:
             self._welcome = welcome
             self._timer.stop()
             self._position = 0
+        self._still = None
         self._running = True
         if self._held is None:
             if not self._timer.isActive():
@@ -790,6 +866,7 @@ class ThemedAudience(QObject):
     def stop(self):
         """Stop changing screens, e.g. while a timer shows."""
         self._running = False
+        self._still = None
         self._timer.stop()
         self._minuteTimer.stop()
 
@@ -822,7 +899,10 @@ class ThemedAudience(QObject):
         self._showCurrent(rebuild=False)
 
     def currentScreen(self) -> Optional[tuple]:
-        """("welcome",), ("standings", page) or ("held", screen) for what the rotation shows."""
+        """("welcome",), ("standings", page) or ("held", screen) for what the rotation shows,
+        or ("still", screen) for a screen shown with showWelcome() or showStill()."""
+        if self._still is not None:
+            return ("still", self._still)
         if self._held is not None:
             return ("held", self._held[0])
         return self._sequence[self._position] if self._sequence else None
@@ -835,6 +915,27 @@ class ThemedAudience(QObject):
 
     def hasWelcome(self) -> bool:
         return self.theme.hasScreen("welcome")
+
+    def hasAwards(self) -> bool:
+        return self.hasWelcome() and all(self.theme.hasScreen(screen) for screen in AWARD_SCREENS)
+
+    def showWelcome(self):
+        """Show just the welcome screen in place of the rotation (until start() is called again)."""
+        self.stop()
+        self._still = "welcome"
+        self._render(("welcome",))
+
+    def showStill(self, screen: str, values: Optional[dict] = None, **kwargs):
+        """Show one of the theme's screens in place of the rotation (until start() is called
+        again), filled with values plus the event name and date. Takes the same keyword
+        arguments as Theme.build()."""
+        if not self.theme.hasScreen(screen):
+            raise KeyError(f"The theme has no '{screen}' screen")
+        self.stop()
+        self._still = screen
+        merged = self._eventValues(screen)
+        merged.update(values or {})
+        self.view.setRenderer(self.theme.renderer(screen, values=merged, **kwargs))
 
     def showClock(self, now: datetime):
         """Show the time of day in place of the rotation (until start() is called again).
@@ -916,7 +1017,7 @@ class ThemedAudience(QObject):
             self._startTimer(item)
 
     def _startTimer(self, item: tuple):
-        seconds = STANDINGS_PAGE_SECONDS
+        seconds = WELCOME_SECONDS if item[0] == "welcome" else STANDINGS_PAGE_SECONDS
         self._timer.start(seconds * 1000)
 
     def _onMinute(self):
