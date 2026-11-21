@@ -89,6 +89,8 @@ class Theme:
         self.fontFamily: str = spec.get("fontFamily", "Roboto")
         self.rankAccent: dict = spec.get("rankAccent", {})
         self.screens: dict = spec.get("screens", {})
+        # Whether to draw the glow behind text; see _removeGlow()
+        self.glow = True
         self._templates = {}
         for name, screen in self.screens.items():
             self._templates[name] = ET.parse(os.path.join(directory, screen["file"]))
@@ -124,6 +126,8 @@ class Theme:
         results: the event results page, to show its QR code card if the screen has one."""
         spec = self.screens[screen]
         root = copy.deepcopy(self._templates[screen].getroot())
+        if not self.glow:
+            _removeGlow(root)
         index = _index(root)
 
         for elementId, attrs in (attributes or {}).items():
@@ -322,6 +326,28 @@ def _setText(element, text):
     for child in list(element):
         element.remove(child)
     element.text = str(text)
+
+
+_TEXT_TAGS = {f"{{{SVG_NS}}}text", f"{{{SVG_NS}}}tspan"}
+
+
+def _isText(element) -> bool:
+    """Whether element is text, or a group holding nothing but text (e.g. the clock's glow)."""
+    if element.tag in _TEXT_TAGS:
+        return True
+    drawn = [child for child in element.iter() if child is not element and child.tag != f"{{{SVG_NS}}}g"]
+    return element.tag == f"{{{SVG_NS}}}g" and bool(drawn) and all(child.tag in _TEXT_TAGS for child in drawn)
+
+
+def _removeGlow(root):
+    """Leave out the text glow effects: text drawn through a filter (the templates' filters are
+    blurs, e.g. the glow behind a title) and the "<field>__glow" copies of text. Other blurred
+    shapes, such as the glowing spores, the status dot's glow and soft shadows, stay."""
+    glowing = [(parent, child) for parent in root.iter() for child in parent
+               if (child.get("filter") or "__glow" in (child.get("id") or "")) and _isText(child)]
+    for parent, child in glowing:
+        if child in list(parent):  # Not already gone with an ancestor
+            parent.remove(child)
 
 
 def _parent(root, child):
@@ -830,6 +856,15 @@ class ThemedAudience(QObject):
             background = self.theme.renderer("timer", values={"timer_title": title}, hidden=TIMER_LAYER)
             self.view.setBackground(background, key)
         self.view.setRenderer(self.theme.renderer("timer", only=TIMER_LAYER, **args), keepBackground=True)
+
+    def setGlow(self, enabled: bool):
+        """Draw the glow behind the theme's text, or leave it out, and redraw the screen."""
+        if enabled == self.theme.glow:
+            return
+        self.theme.glow = enabled
+        # Drop the cached timer or clock picture, which was drawn the other way
+        self.view.setBackground(None, None)
+        self.refresh()
 
     def setEventInfo(self, name: str, date: str):
         self.eventName = name or ""

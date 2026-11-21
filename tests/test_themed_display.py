@@ -676,3 +676,18 @@ def test_moved_elements_take_their_glow_along(theme):
     _, ids = parse(theme.build("award_winner", values={"award_name": "Engineering Excellence Award Sponsored by Acme"}))
     assert ids["team_number"].get("transform", "").startswith("translate(0 ")
     assert ids["team_number__glow"].get("transform") == ids["team_number"].get("transform")
+
+
+def test_text_glow_can_be_left_out(theme):
+    theme.glow = False
+    root = ET.fromstring(theme.build("welcome", values={"event_name": "Fall Qualifier"}))
+    ids = ThemedDisplay._index(root)
+    assert ids["event_name"][0].text == "Fall Qualifier"
+    assert "event_name__glow" not in ids
+    assert not any(element.get("filter") for element in root.iter() if element.tag == f"{{{ThemedDisplay.SVG_NS}}}text")
+    # The clock's glow is a group of text
+    assert "clock_time__glow" not in ThemedDisplay._index(ET.fromstring(theme.build("clock")))
+    # Glowing shapes stay
+    assert "status_dot__glow" in ThemedDisplay._index(ET.fromstring(theme.build("standings")))
+    theme.glow = True
+    assert "event_name__glow" in ThemedDisplay._index(ET.fromstring(theme.build("welcome")))

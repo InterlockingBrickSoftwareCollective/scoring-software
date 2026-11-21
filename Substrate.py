@@ -61,6 +61,9 @@ AUDIENCE_THEME_META_KEY = "audience.theme"
 EVENT_NAME_META_KEY = "audience.eventName"
 EVENT_DATE_META_KEY = "audience.eventDate"
 
+# Meta table key holding whether the themed audience display draws its glow effects ("on" or "off")
+GLOW_EFFECTS_META_KEY = "audience.glow"
+
 # Meta table key holding whether to show the time of day after practice ends ("on" or "off")
 CLOCK_AFTER_PRACTICE_META_KEY = "audience.clockAfterPractice"
 
@@ -102,6 +105,8 @@ def init():
     Events.subscribe(Events.MatchSelected, lambda e: _write(_setMeta, SELECTED_MATCH_META_KEY, str(e.match)))
     Events.subscribe(Events.AudienceThemeChanged,
                      lambda e: _write(_setMeta, AUDIENCE_THEME_META_KEY, "on" if e.enabled else "off"))
+    Events.subscribe(Events.GlowEffectsChanged,
+                     lambda e: _write(_setMeta, GLOW_EFFECTS_META_KEY, "on" if e.enabled else "off"))
     Events.subscribe(Events.EventInfoChanged, lambda e: _write(_setEventInfo, e.name, e.date))
     Events.subscribe(Events.ClockAfterPracticeChanged,
                      lambda e: _write(_setMeta, CLOCK_AFTER_PRACTICE_META_KEY, "on" if e.enabled else "off"))
@@ -142,6 +147,11 @@ def loadAudienceTheme() -> Optional[bool]:
     event, or None if the operator hasn't chosen."""
     saved = _run(_getMeta, AUDIENCE_THEME_META_KEY)
     return None if saved is None else saved == "on"
+
+
+def loadGlowEffects() -> bool:
+    """Return whether the themed audience display draws its glow effects (on unless turned off)."""
+    return _run(_getMeta, GLOW_EFFECTS_META_KEY) != "off"
 
 
 def loadEventInfo() -> tuple:

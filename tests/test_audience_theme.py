@@ -352,3 +352,34 @@ def test_match_status_reaches_the_standings(audience, monkeypatch):
     Events.publish(Events.MatchStatusChanged(0, None))
     assert audience.matchStatus is None
     assert built[-1]["values"]["status_single"] == "Waiting"
+
+
+# Glow effects
+
+def test_glow_effects_can_be_turned_off(audience, monkeypatch):
+    audience.setThemeEnabled(True)
+    published, changed = [], []
+    monkeypatch.setattr(Events, "publish", published.append)
+    audience.glowChanged.connect(changed.append)
+    assert audience.glowEnabled()
+    audience.setGlowEnabled(False)
+    assert not audience.theme.glow
+    assert [e.enabled for e in published if isinstance(e, Events.GlowEffectsChanged)] == [False]
+    assert changed == [False]
+    audience.setGlowEnabled(False)  # No change, no event
+    assert changed == [False]
+
+
+def test_glow_choice_redraws_the_timer_background(audience):
+    audience.setThemeEnabled(True)
+    audience.setMode(Audience.MATCH_TIMER)
+    assert audience.themed.view.backgroundKey() is not None
+    audience.setGlowEnabled(False)
+    assert audience.themed.view.backgroundKey() is not None  # Drawn again, without glow
+
+
+def test_glow_choice_is_saved(database):
+    import Substrate
+    assert Substrate.loadGlowEffects() is True
+    Events.publish(Events.GlowEffectsChanged(False))
+    assert database().loadGlowEffects() is False

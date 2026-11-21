@@ -92,6 +92,7 @@ class AudienceWindow(QMainWindow):
     fullScreenChanged = pyqtSignal(bool)
     # The themed display was turned on or off
     themeChanged = pyqtSignal(bool)
+    glowChanged = pyqtSignal(bool)
     # What the display shows changed (RANKS, WELCOME, CLOCK, MATCH_TIMER or PRACTICE_TIMER)
     modeChanged = pyqtSignal(str)
 
@@ -296,6 +297,20 @@ class AudienceWindow(QMainWindow):
             self.setMode(RANKS)
         self.updateDisplayState()
         self.themeChanged.emit(enabled)
+
+    def glowEnabled(self) -> bool:
+        return self.theme is not None and self.theme.glow
+
+    def setGlowEnabled(self, enabled: bool):
+        """Draw the themed screens' glow effects, or leave them out. Has no effect without a theme."""
+        enabled = bool(enabled)
+        if self.themed is None or enabled == self.theme.glow:
+            return
+        Events.publish(Events.GlowEffectsChanged(enabled))
+        self.themed.setGlow(enabled)
+        # Redraw a timer or clock screen, which the rotation's refresh leaves alone
+        self.updateDisplayState()
+        self.glowChanged.emit(enabled)
 
     def isShowingTheme(self) -> bool:
         """Whether the themed standings rotation shows."""

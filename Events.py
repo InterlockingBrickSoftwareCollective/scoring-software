@@ -83,6 +83,12 @@ class AudienceThemeChanged(Event):
 
 
 @dataclass(frozen=True)
+class GlowEffectsChanged(Event):
+    """The operator turned the themed audience display's glow effects on or off."""
+    enabled: bool
+
+
+@dataclass(frozen=True)
 class EventInfoChanged(Event):
     """The operator set the event name and date shown on the themed audience display.
     An empty name means to use the score reflector's event name, if sync is set up."""

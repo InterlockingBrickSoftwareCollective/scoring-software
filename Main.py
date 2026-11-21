@@ -243,9 +243,13 @@ class MainWindow(QMainWindow):
                 self.themeAction = QAction(f"{self.audienceDisplay.theme.name} Theme", checkable=True)
                 self.themeAction.toggled.connect(self.audienceDisplay.setThemeEnabled)
                 self.audienceDisplay.themeChanged.connect(self.themeAction.setChecked)
+                self.glowAction = QAction("Glow Effects", checkable=True)
+                self.glowAction.setChecked(self.audienceDisplay.glowEnabled())
+                self.glowAction.toggled.connect(self.audienceDisplay.setGlowEnabled)
+                self.audienceDisplay.glowChanged.connect(self.glowAction.setChecked)
                 eventInfoAction = QAction("Event Name and Date...")
                 eventInfoAction.triggered.connect(self.editEventInfo)
-                self.audienceMenu.addActions([self.themeAction, eventInfoAction])
+                self.audienceMenu.addActions([self.themeAction, self.glowAction, eventInfoAction])
 
             # Timer control buttons
             self.timerMode = QAction("Show Timer")
@@ -382,6 +386,7 @@ class MainWindow(QMainWindow):
             # The themed display is on unless the operator turned it off
             themeEnabled = Substrate.loadAudienceTheme()
             self.audienceDisplay.setThemeEnabled(True if themeEnabled is None else themeEnabled)
+            self.audienceDisplay.setGlowEnabled(Substrate.loadGlowEffects())
             self.updateEventInfo()
             self.updateTimerControls()
             self.sync.statusChanged.connect(lambda status: self.updateEventInfo())
